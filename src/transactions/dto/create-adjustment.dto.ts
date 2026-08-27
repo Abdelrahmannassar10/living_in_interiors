@@ -1,0 +1,3 @@
+import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsPositive, IsString } from 'class-validator';
+import { AdjustmentType } from '../../common/enums/transaction-type.enum';
+export class CreateAdjustmentDto { @IsString() @IsNotEmpty() itemCode!: string; @IsEnum(AdjustmentType) adjustmentType!: AdjustmentType; @IsString() @IsNotEmpty() adjustmentReason!: string; @IsInt() @IsPositive() locationId!: number; @IsInt() @IsPositive() qty!: number; @IsOptional() @IsString() notes?: string; }
