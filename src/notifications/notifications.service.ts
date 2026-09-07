@@ -8,6 +8,25 @@ export class NotificationsService {
   constructor(private readonly reports: ReportsService, private readonly quotations: QuotationsService) {}
 
   async sendQuotationEmail(quotationId: number, recipientEmail: string): Promise<void> {
+    await this.deliverQuotationEmail(quotationId, recipientEmail);
+  }
+
+  async testQuotationEmail(quotationId: number, recipientEmail: string) {
+    const result = await this.deliverQuotationEmail(quotationId, recipientEmail);
+    return {
+      quotationId,
+      pdf: {
+        created: true,
+        sizeBytes: result.pdfSizeBytes,
+      },
+      email: {
+        sent: true,
+        id: result.emailId,
+      },
+    };
+  }
+
+  private async deliverQuotationEmail(quotationId: number, recipientEmail: string) {
     const apiKey = process.env.RESEND_API_KEY;
     const fromEmail = process.env.RESEND_FROM_EMAIL;
     if (!apiKey || !fromEmail) throw new ServiceUnavailableException('Resend email is not configured');
@@ -27,6 +46,7 @@ export class NotificationsService {
     });
     if (result.error) throw new ServiceUnavailableException(`Resend email failed: ${result.error.message}`);
     if (quotation.status === 'Draft') await this.quotations.updateStatus(quotationId, 'Sent' as never);
+    return { pdfSizeBytes: pdf.length, emailId: result.data?.id };
   }
 
   private escapeHtml(value: string): string { return value.replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character] ?? character)); }
