@@ -5,7 +5,7 @@ import { QuotationsService } from '../quotations/quotations.service';
 
 @Injectable()
 export class NotificationsService {
-  constructor(private readonly reports: ReportsService, @Inject(forwardRef(() => QuotationsService)) private readonly quotations: QuotationsService) {}
+  constructor(@Inject(forwardRef(() => ReportsService)) private readonly reports: ReportsService, @Inject(forwardRef(() => QuotationsService)) private readonly quotations: QuotationsService) {}
 
   async sendQuotationEmail(quotationId: number, recipientEmail: string, updateStatus = true): Promise<void> {
     await this.deliverQuotationEmail(quotationId, recipientEmail, updateStatus);

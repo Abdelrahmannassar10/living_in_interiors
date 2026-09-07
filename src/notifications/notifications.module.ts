@@ -4,5 +4,5 @@ import { QuotationsModule } from '../quotations/quotations.module';
 import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
 
-@Module({ imports: [ReportsModule, forwardRef(() => QuotationsModule)], controllers: [NotificationsController], providers: [NotificationsService], exports: [NotificationsService] })
+@Module({ imports: [forwardRef(() => ReportsModule), forwardRef(() => QuotationsModule)], controllers: [NotificationsController], providers: [NotificationsService], exports: [NotificationsService] })
 export class NotificationsModule {}
