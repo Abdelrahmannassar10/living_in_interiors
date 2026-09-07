@@ -50,6 +50,9 @@ importers:
       cloudinary:
         specifier: ^2.10.1
         version: 2.10.1
+      dotenv:
+        specifier: ^16.6.1
+        version: 16.6.1
       express-rate-limit:
         specifier: ^8.6.2
         version: 8.6.2(express@5.2.1)
