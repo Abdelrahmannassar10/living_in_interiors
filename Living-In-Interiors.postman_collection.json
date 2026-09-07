@@ -1,0 +1,101 @@
+{
+  "info": {
+    "_postman_id": "9cf40602-72db-4a84-963b-1f95d2cae61c",
+    "name": "Living In Interiors API",
+    "description": "Import this collection into Postman. Run Login first; it saves the JWT into the collection variable `jwt_token`. Update example IDs and credentials to match your database.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api/v1" },
+    { "key": "jwt_token", "value": "" },
+    { "key": "username", "value": "admin" },
+    { "key": "password", "value": "password123" },
+    { "key": "userId", "value": "1" },
+    { "key": "brandId", "value": "1" },
+    { "key": "locationId", "value": "1" },
+    { "key": "destinationLocationId", "value": "2" },
+    { "key": "itemCode", "value": "SAMPLE-001" },
+    { "key": "itemId", "value": "1" },
+    { "key": "transactionId", "value": "1" },
+    { "key": "quotationId", "value": "1" },
+    { "key": "quotationDetailId", "value": "1" }
+  ],
+  "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{jwt_token}}", "type": "string" }] },
+  "item": [
+    { "name": "System", "item": [
+      { "name": "Health (Public)", "request": { "auth": { "type": "noauth" }, "method": "GET", "url": "{{baseUrl}}/health" } },
+      { "name": "Root", "request": { "method": "GET", "url": "{{baseUrl}}" } }
+    ] },
+    { "name": "Authentication", "item": [
+      { "name": "Login (saves JWT)", "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const body = pm.response.json();", "pm.collectionVariables.set('jwt_token', body.data.accessToken);"] } }], "request": { "auth": { "type": "noauth" }, "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}" }, "url": "{{baseUrl}}/auth/login" } },
+      { "name": "Logout", "request": { "method": "POST", "url": "{{baseUrl}}/auth/logout" } }
+    ] },
+    { "name": "Users", "item": [
+      { "name": "List Users", "request": { "method": "GET", "url": "{{baseUrl}}/users?page=1&limit=20" } },
+      { "name": "Get User", "request": { "method": "GET", "url": "{{baseUrl}}/users/{{userId}}" } },
+      { "name": "Create User", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"username\": \"test.user\",\n  \"password\": \"password123\",\n  \"fullName\": \"Test User\",\n  \"role\": \"Staff\",\n  \"isActive\": true\n}" }, "url": "{{baseUrl}}/users" } },
+      { "name": "Update User", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"fullName\": \"Updated Test User\",\n  \"isActive\": true\n}" }, "url": "{{baseUrl}}/users/{{userId}}" } },
+      { "name": "Change Password", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"currentPassword\": \"{{password}}\",\n  \"newPassword\": \"newpassword123\"\n}" }, "url": "{{baseUrl}}/users/{{userId}}/password" } }
+    ] },
+    { "name": "Brands", "item": [
+      { "name": "List Brands", "request": { "method": "GET", "url": "{{baseUrl}}/brands?search=sample" } },
+      { "name": "Get Brand", "request": { "method": "GET", "url": "{{baseUrl}}/brands/{{brandId}}" } },
+      { "name": "Create Brand", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"name\": \"Sample Brand\",\n  \"country\": \"Italy\",\n  \"website\": \"https://example.com\",\n  \"notes\": \"Postman sample\"\n}" }, "url": "{{baseUrl}}/brands" } },
+      { "name": "Update Brand", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"notes\": \"Updated from Postman\"\n}" }, "url": "{{baseUrl}}/brands/{{brandId}}" } },
+      { "name": "Deactivate Brand", "request": { "method": "DELETE", "url": "{{baseUrl}}/brands/{{brandId}}" } }
+    ] },
+    { "name": "Locations", "item": [
+      { "name": "List Locations", "request": { "method": "GET", "url": "{{baseUrl}}/locations" } },
+      { "name": "Get Location", "request": { "method": "GET", "url": "{{baseUrl}}/locations/{{locationId}}" } },
+      { "name": "Create Location", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"name\": \"Sample Storage\",\n  \"type\": \"Storage\",\n  \"isPhysical\": true,\n  \"notes\": \"Postman sample\"\n}" }, "url": "{{baseUrl}}/locations" } },
+      { "name": "Update Location", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"notes\": \"Updated from Postman\"\n}" }, "url": "{{baseUrl}}/locations/{{locationId}}" } }
+    ] },
+    { "name": "Items", "item": [
+      { "name": "List / Search Items", "request": { "method": "GET", "url": "{{baseUrl}}/items?q=sample&brand=Sample%20Brand&category=Seating&inStock=true&sortBy=code&sortOrder=ASC&page=1&limit=20" } },
+      { "name": "Low Stock Items", "request": { "method": "GET", "url": "{{baseUrl}}/items/low-stock" } },
+      { "name": "Get Item", "request": { "method": "GET", "url": "{{baseUrl}}/items/{{itemCode}}" } },
+      { "name": "Item Stock Summary", "request": { "method": "GET", "url": "{{baseUrl}}/items/{{itemCode}}/stock" } },
+      { "name": "Create Item", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"code\": \"{{itemCode}}\",\n  \"brandId\": {{brandId}},\n  \"description\": \"Sample lounge chair\",\n  \"category\": \"Seating\",\n  \"initialQty\": 10,\n  \"initialLocationId\": {{locationId}},\n  \"unitPrice\": \"1250.00\",\n  \"currency\": \"USD\",\n  \"lowStockThreshold\": 2\n}" }, "url": "{{baseUrl}}/items" } },
+      { "name": "Update Item", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"unitPrice\": \"1300.00\",\n  \"lowStockThreshold\": 3\n}" }, "url": "{{baseUrl}}/items/{{itemCode}}" } },
+      { "name": "Delete Item (soft delete)", "request": { "method": "DELETE", "url": "{{baseUrl}}/items/{{itemCode}}" } }
+    ] },
+    { "name": "Transactions", "item": [
+      { "name": "List Transactions", "request": { "method": "GET", "url": "{{baseUrl}}/transactions" } },
+      { "name": "Get Transaction", "request": { "method": "GET", "url": "{{baseUrl}}/transactions/{{transactionId}}" } },
+      { "name": "Transfer", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"itemCode\": \"{{itemCode}}\",\n  \"fromLocationId\": {{locationId}},\n  \"toLocationId\": {{destinationLocationId}},\n  \"qty\": 1,\n  \"referenceNo\": \"TRF-001\"\n}" }, "url": "{{baseUrl}}/transactions/transfer" } },
+      { "name": "Sale", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"itemCode\": \"{{itemCode}}\",\n  \"fromLocationId\": {{locationId}},\n  \"qty\": 1,\n  \"customerName\": \"Sample Customer\",\n  \"referenceNo\": \"SALE-001\"\n}" }, "url": "{{baseUrl}}/transactions/sale" } },
+      { "name": "Return", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"itemCode\": \"{{itemCode}}\",\n  \"toLocationId\": {{locationId}},\n  \"qty\": 1,\n  \"customerName\": \"Sample Customer\",\n  \"referenceNo\": \"RETURN-001\"\n}" }, "url": "{{baseUrl}}/transactions/return" } },
+      { "name": "Adjustment", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"itemCode\": \"{{itemCode}}\",\n  \"adjustmentType\": \"Increase\",\n  \"adjustmentReason\": \"Stock count correction\",\n  \"locationId\": {{locationId}},\n  \"qty\": 1\n}" }, "url": "{{baseUrl}}/transactions/adjustment" } }
+    ] },
+    { "name": "Quotations", "item": [
+      { "name": "List Quotations", "request": { "method": "GET", "url": "{{baseUrl}}/quotations" } },
+      { "name": "Get Quotation", "request": { "method": "GET", "url": "{{baseUrl}}/quotations/{{quotationId}}" } },
+      { "name": "Quotation Totals", "request": { "method": "GET", "url": "{{baseUrl}}/quotations/{{quotationId}}/totals" } },
+      { "name": "Create Quotation", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"clientName\": \"Sample Client\",\n  \"projectName\": \"Sample Project\",\n  \"contactPerson\": \"Jane Doe\",\n  \"phone\": \"+15555550100\",\n  \"email\": \"jane@example.com\",\n  \"validUntil\": \"2027-12-31\",\n  \"discountGlobal\": \"0\",\n  \"vatPercent\": \"5\",\n  \"currency\": \"USD\"\n}" }, "url": "{{baseUrl}}/quotations" } },
+      { "name": "Update Quotation Status", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"status\": \"Sent\"\n}" }, "url": "{{baseUrl}}/quotations/{{quotationId}}/status" } }
+    ] },
+    { "name": "Quotation Details", "item": [
+      { "name": "Add Item to Quotation", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"quotationId\": {{quotationId}},\n  \"itemCode\": \"{{itemCode}}\",\n  \"qty\": 1,\n  \"unitPrice\": \"1300.00\",\n  \"discountPercent\": \"0\"\n}" }, "url": "{{baseUrl}}/quotation-details" } },
+      { "name": "Delete Quotation Detail (soft delete)", "request": { "method": "DELETE", "url": "{{baseUrl}}/quotation-details/{{quotationDetailId}}" } }
+    ] },
+    { "name": "Dashboard", "item": [
+      { "name": "Summary", "request": { "method": "GET", "url": "{{baseUrl}}/dashboard/summary" } },
+      { "name": "Recent Transactions", "request": { "method": "GET", "url": "{{baseUrl}}/dashboard/recent-transactions" } }
+    ] },
+    { "name": "Reports", "item": [
+      { "name": "Download Quotation PDF", "request": { "method": "GET", "url": "{{baseUrl}}/reports/quotation/{{quotationId}}/pdf" } }
+    ] },
+    { "name": "Stock Alerts", "item": [
+      { "name": "List Alerting Items", "request": { "method": "GET", "url": "{{baseUrl}}/stock-alerts" } },
+      { "name": "Get Item Alert Config", "request": { "method": "GET", "url": "{{baseUrl}}/stock-alerts/{{itemId}}" } },
+      { "name": "Set Item Alert Config", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"threshold\": 3,\n  \"isEnabled\": true\n}" }, "url": "{{baseUrl}}/stock-alerts/{{itemId}}" } }
+    ] },
+    { "name": "Notifications", "item": [
+      { "name": "Email Quotation", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"email\": \"recipient@example.com\"\n}" }, "url": "{{baseUrl}}/notifications/quotations/{{quotationId}}/send-email" } }
+    ] },
+    { "name": "Audit Logs", "item": [
+      { "name": "List Audit Logs", "request": { "method": "GET", "url": "{{baseUrl}}/audit-logs" } },
+      { "name": "Find Logs by Entity", "request": { "method": "GET", "url": "{{baseUrl}}/audit-logs/Item/{{itemCode}}" } }
+    ] }
+  ]
+}
