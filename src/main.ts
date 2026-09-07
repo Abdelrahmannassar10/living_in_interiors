@@ -13,7 +13,7 @@ async function bootstrap() {
   const apiPrefix = process.env.API_PREFIX ?? 'api/v1';
   const port = Number(process.env.PORT ?? 3000);
 
-  app.setGlobalPrefix(apiPrefix);
+  app.setGlobalPrefix(apiPrefix, { exclude: ['health'] });
   app.use(helmet());
   app.enableCors({
     origin: process.env.CORS_ALLOW_ALL === 'true'
