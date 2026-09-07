@@ -11,7 +11,7 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main",
+    "start:prod": "puppeteer browsers install chrome && node dist/main",
     "migration:generate": "typeorm-ts-node-commonjs -d src/config/typeorm.config.ts migration:generate src/database/migrations/$npm_config_name",
     "migration:run": "typeorm-ts-node-commonjs -d src/config/typeorm.config.ts migration:run",
     "migration:revert": "typeorm-ts-node-commonjs -d src/config/typeorm.config.ts migration:revert",
