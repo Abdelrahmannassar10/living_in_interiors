@@ -9,19 +9,32 @@ import { UsersService } from '../users/users.service';
 export class AuthService {
   constructor(private readonly usersService: UsersService, private readonly jwt: JwtService, private readonly config: ConfigService) {}
 
-  async login(user: User) {
+  private async issueTokens(user: User, isLogin: boolean) {
     const accessToken = await this.jwt.signAsync({ sub: user.id, username: user.username, role: user.role });
     const refreshToken = await this.jwt.signAsync({ sub: user.id }, { secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'), expiresIn: this.config.get<string>('JWT_REFRESH_EXPIRES_IN', '7d') });
     user.refreshToken = await bcrypt.hash(refreshToken, 12);
-    user.lastLoginAt = new Date();
+    if (isLogin) user.lastLoginAt = new Date();
     await this.usersService.save(user);
     return { accessToken, refreshToken, user: { id: user.id, username: user.username, fullName: user.fullName, role: user.role } };
   }
 
-  async refresh(userId: number, refreshToken: string) {
-    const user = await this.usersService.findOne(userId);
+  async login(user: User) {
+    return this.issueTokens(user, true);
+  }
+
+  /** Rotating refresh: verifies the refresh JWT, checks the stored hash, then re-issues both tokens. */
+  async refresh(refreshToken: string) {
+    let sub: number;
+    try {
+      const payload = await this.jwt.verifyAsync<{ sub: number }>(refreshToken, { secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET') });
+      sub = payload.sub;
+    } catch {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+    const user = await this.usersService.findOne(sub);
+    if (!user.isActive) throw new UnauthorizedException('User is inactive');
     if (!user.refreshToken || !(await bcrypt.compare(refreshToken, user.refreshToken))) throw new UnauthorizedException('Invalid refresh token');
-    return this.login(user);
+    return this.issueTokens(user, false);
   }
 
   async logout(userId: number): Promise<void> { await this.usersService.setRefreshToken(userId, null); }

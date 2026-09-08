@@ -25,9 +25,17 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       message = typeof exceptionResponse === 'string'
         ? exceptionResponse
         : (exceptionResponse as { message?: string | string[] }).message ?? message;
-    } else if (exception instanceof QueryFailedError && (exception as QueryFailedError & { code?: string }).code === '23505') {
-      status = HttpStatus.CONFLICT;
-      message = 'A record with this value already exists';
+    } else if (exception instanceof QueryFailedError) {
+      const code = (exception as QueryFailedError & { code?: string }).code ?? (exception.driverError as { code?: string } | undefined)?.code;
+      if (code === '23505') {
+        status = HttpStatus.CONFLICT;
+        message = 'A record with this value already exists';
+      } else if (code === '23503') {
+        status = HttpStatus.BAD_REQUEST;
+        message = 'This operation references a record that does not exist';
+      } else {
+        this.logger.error(exception instanceof Error ? exception.stack : exception);
+      }
     } else {
       this.logger.error(exception instanceof Error ? exception.stack : exception);
     }
