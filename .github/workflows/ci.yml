@@ -65,5 +65,28 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Smoke: boot server & probe /health
+        run: |
+          PORT=3100 node dist/main & APP_PID=$!
+          ready=0
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3100/api/v1/health > /tmp/health.json; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          kill $APP_PID || true
+          if [ "$ready" != "1" ]; then
+            echo "server did not become ready in time"
+            exit 1
+          fi
+          cat /tmp/health.json
+          echo
+          grep -q '"up":true' /tmp/health.json || { echo "health db.up is false"; exit 1; }
+
       - name: E2E (golden path + concurrency)
         run: pnpm test:e2e
+
+      - name: Load sanity check (10x fixture, lists < 300ms)
+        run: pnpm load:check

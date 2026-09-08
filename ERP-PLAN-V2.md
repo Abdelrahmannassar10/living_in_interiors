@@ -193,11 +193,11 @@ v1 was written as if nothing had been built yet. It also assumed infrastructure 
 
 ### Phase 5 — Industrialize (≈ 1 week, then ongoing) 🚀
 
-- [ ] Staging deploy + migration-run step in CI; prod deploy is manual tag (conscious downtime-window deploys per G3).
-- [ ] Nightly `pg_dump` + monthly **restore drill** (the backup that's never been restored is a hope, not a backup).
-- [ ] Simple runbook doc: stock drift reconciliation query, stuck Puppeteer, expired-token handling.
-- [ ] `GET /health` extended with a DB ping.
-- [ ] Load sanity check: seed 10× fixture, confirm the paginated list endpoints stay <300ms.
+- [x] Staging deploy + migration-run step in CI; prod deploy is manual tag (conscious downtime-window deploys per G3). *(migration-run step ships in CI; staging/prod deploy targets pending infra)*
+- [ ] Nightly `pg_dump` + monthly **restore drill** (the backup that's never been restored is a hope, not a backup). *(runbook documents procedure; cron + object storage pending infra)*
+- [x] Simple runbook doc: stock drift reconciliation query, stuck Puppeteer, expired-token handling. *(see `RUNBOOK.md`)*
+- [x] `GET /health` extended with a DB ping.
+- [x] Load sanity check: seed 10× fixture, confirm the paginated list endpoints stay <300ms. *(`pnpm load:check`, wired into CI)*
 - [ ] Frontend work starts against the frozen API (separate plan/repo).
 
 ---

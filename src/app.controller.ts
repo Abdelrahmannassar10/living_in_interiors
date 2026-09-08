@@ -13,13 +13,15 @@ export class AppController {
 
   @Public()
   @Get('health')
-  getHealth() {
+  async getHealth() {
+    const db = await this.appService.pingDb();
     return {
-      status: 'ok',
+      status: db.up ? 'ok' : 'degraded',
       company: 'Living In interiors',
       version: process.env.npm_package_version ?? '0.0.1',
       timestamp: new Date().toISOString(),
       uptime: Math.floor(process.uptime()),
+      db,
     };
   }
 }
