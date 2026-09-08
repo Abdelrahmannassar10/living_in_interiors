@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Item } from '../items/entities/item.entity';
 import { Location } from '../locations/entities/location.entity';
@@ -24,6 +24,33 @@ import { StockAlertsService } from '../stock-alerts/stock-alerts.service';
 import { AuditLog } from '../audit-log/entities/audit-log.entity';
 import { TransactionSearchDto } from './dto/search-transaction.dto';
 import { SalesOrdersService } from '../sales-orders/sales-orders.service';
+
+export interface ExecuteTransactionInput {
+  itemCode: string;
+  type: TransactionType;
+  fromLocationId?: number;
+  toLocationId?: number;
+  qty: number;
+  adjustmentType?: AdjustmentType;
+  adjustmentReason?: AdjustmentReason;
+  customerName?: string;
+  salesOrderId?: number;
+  purchaseOrderId?: number;
+  referenceNo?: string;
+  notes?: string;
+  actorId?: number;
+}
+
+export interface RecordInternalAdjustmentInput {
+  itemCode: string;
+  qty: number;
+  adjustmentType: AdjustmentType;
+  adjustmentReason: AdjustmentReason;
+  locationId: number;
+  purchaseOrderId?: number;
+  notes?: string;
+  actorId?: number;
+}
 
 @Injectable()
 export class TransactionsService {
@@ -94,21 +121,29 @@ export class TransactionsService {
     });
   }
 
-  private async execute(input: {
-    itemCode: string;
-    type: TransactionType;
-    fromLocationId?: number;
-    toLocationId?: number;
-    qty: number;
-    adjustmentType?: AdjustmentType;
-    adjustmentReason?: AdjustmentReason;
-    customerName?: string;
-    salesOrderId?: number;
-    referenceNo?: string;
-    notes?: string;
-    actorId?: number;
-  }): Promise<Transaction> {
-    const transaction = await this.dataSource.transaction(async (manager) => {
+  /**
+   * Full public flow: DB transaction + audit log, then post-commit side effects
+   * (WS events + stock-alert evaluation) so the alerting can never roll back a
+   * valid stock move.
+   */
+  execute(input: ExecuteTransactionInput): Promise<Transaction> {
+    return this.dataSource
+      .transaction((manager) => this.executeWithin(manager, input))
+      .then(async (transaction) => {
+        await this.runPostCommitEffects(transaction);
+        return transaction;
+      });
+  }
+
+  /**
+   * The transactional half of execute(); safe to reuse inside another open DB
+   * transaction (see recordInternalAdjustment below).
+   */
+  private executeWithin(
+    manager: EntityManager,
+    input: ExecuteTransactionInput,
+  ): Promise<Transaction> {
+    return (async () => {
       const item = await manager.findOne(Item, {
         where: { code: input.itemCode.toUpperCase(), isActive: true },
         lock: { mode: 'pessimistic_write' },
@@ -168,6 +203,7 @@ export class TransactionsService {
         customerName: input.customerName ?? null,
         referenceNo: input.referenceNo ?? null,
         salesOrderId: input.salesOrderId ?? null,
+        purchaseOrderId: input.purchaseOrderId ?? null,
         notes: input.notes ?? null,
         stockBefore: snapshots.before,
         stockAfter: snapshots.after,
@@ -193,9 +229,14 @@ export class TransactionsService {
       );
 
       return saved;
-    });
+    })();
+  }
 
-    // Post-commit side effects (never inside the DB transaction).
+  /**
+   * Post-commit side effects, run after the DB transaction commits. Public so
+   * a caller that already owns a transaction can replay the same effects.
+   */
+  async runPostCommitEffects(transaction: Transaction): Promise<void> {
     this.gateway.emitTransactionCreated(
       transaction.id,
       transaction.transactionType,
@@ -207,8 +248,35 @@ export class TransactionsService {
       transaction.stockAfter,
     );
     await this.stockAlerts.evaluateAfterTransaction(transaction);
+  }
 
-    return transaction;
+  /**
+   * Adjustment/Increase|Decrease written inside the caller's open transaction
+   * (e.g. goods receipts and supplier returns). The caller is responsible for
+   * running runPostCommitEffects afterwards.
+   */
+  recordInternalAdjustment(
+    manager: EntityManager,
+    input: RecordInternalAdjustmentInput,
+  ): Promise<Transaction> {
+    return this.executeWithin(manager, {
+      itemCode: input.itemCode,
+      type: TransactionType.Adjustment,
+      fromLocationId:
+        input.adjustmentType === AdjustmentType.Decrease
+          ? input.locationId
+          : undefined,
+      toLocationId:
+        input.adjustmentType === AdjustmentType.Increase
+          ? input.locationId
+          : undefined,
+      qty: input.qty,
+      adjustmentType: input.adjustmentType,
+      adjustmentReason: input.adjustmentReason,
+      purchaseOrderId: input.purchaseOrderId,
+      notes: input.notes,
+      actorId: input.actorId,
+    });
   }
 
   private async location(

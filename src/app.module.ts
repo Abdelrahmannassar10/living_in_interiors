@@ -30,6 +30,7 @@ import { SalesOrdersModule } from './sales-orders/sales-orders.module';
 import { DeliveriesModule } from './deliveries/deliveries.module';
 import { ReservationsModule } from './reservations/reservations.module';
 import { TasksModule } from './tasks/tasks.module';
+import { PurchaseOrdersModule } from './purchase-orders/purchase-orders.module';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { TasksModule } from './tasks/tasks.module';
     SalesOrdersModule,
     DeliveriesModule,
     TasksModule,
+    PurchaseOrdersModule,
   ],
   controllers: [AppController],
   providers: [
