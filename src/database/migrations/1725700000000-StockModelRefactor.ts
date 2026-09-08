@@ -74,6 +74,19 @@ export class StockModelRefactor1725700000000 implements MigrationInterface {
     await queryRunner.query(
       `UPDATE "transactions" SET "adjustment_reason" = 'CustomerReturn' WHERE "adjustment_reason" = 'Customer Return'`,
     );
+    // Historic databases may contain free-text values that do not correspond to
+    // an enum member. Preserve those values in the notes instead of discarding
+    // them or assigning a potentially incorrect adjustment reason.
+    await queryRunner.query(`
+      UPDATE "transactions"
+      SET
+        "notes" = concat_ws(E'\\n', "notes", 'Legacy adjustment reason: ' || "adjustment_reason"),
+        "adjustment_reason" = NULL
+      WHERE "adjustment_reason" IS NOT NULL
+        AND "adjustment_reason" NOT IN (
+          'NewArrival', 'Damage', 'CountCorrection', 'CustomerReturn', 'SupplierReturn'
+        )
+    `);
     await queryRunner.query(
       `ALTER TABLE "transactions" ALTER COLUMN "adjustment_reason" TYPE "public"."transactions_adjustment_reason_enum" USING "adjustment_reason"::"public"."transactions_adjustment_reason_enum"`,
     );
