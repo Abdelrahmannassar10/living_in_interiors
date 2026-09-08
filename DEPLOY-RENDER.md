@@ -53,8 +53,8 @@
 | **Start Command** | `pnpm start:prod` |
 | **Plan** | Free tier for testing, Starter ($7/mo) for production |
 
-> `pnpm start:prod` runs `puppeteer browsers install chrome && node dist/main`.
-> On Render free tier the Chrome install adds ~30s to cold starts. If you don't need PDFs yet, you can skip Puppeteer by using `node dist/main` as the start command instead.
+> `pnpm start:prod` runs `puppeteer browsers install chrome && node dist/src/main.js`.
+> On Render free tier the Chrome install adds ~30s to cold starts. If you don't need PDFs yet, you can skip Puppeteer by using `node dist/src/main.js` as the start command instead.
 
 ---
 
@@ -199,7 +199,7 @@ The app is single-currency (USD). All money fields are decimal strings. Don't se
 
 ### Puppeteer / PDFs
 
-The quotation PDF endpoint uses headless Chrome. On Render, `puppeteer browsers install chrome` runs during build. This adds ~30s to cold starts. If you don't need PDFs yet, you can skip it by changing the start command to `node dist/main`.
+The quotation PDF endpoint uses headless Chrome. On Render, `puppeteer browsers install chrome` runs during build. This adds ~30s to cold starts. If you don't need PDFs yet, you can skip it by changing the start command to `node dist/src/main.js`.
 
 ---
 
