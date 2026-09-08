@@ -9,3 +9,11 @@ export enum AdjustmentType {
   Increase = 'Increase',
   Decrease = 'Decrease',
 }
+
+export enum AdjustmentReason {
+  NewArrival = 'NewArrival',
+  Damage = 'Damage',
+  CountCorrection = 'CountCorrection',
+  CustomerReturn = 'CustomerReturn',
+  SupplierReturn = 'SupplierReturn',
+}

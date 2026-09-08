@@ -13,11 +13,9 @@ export class Item {
   @Column({ name: 'finish_fabric', type: 'varchar', nullable: true, length: 200 }) finishFabric!: string | null;
   @Column({ type: 'varchar', nullable: true, length: 100 }) category!: string | null;
   @Column({ name: 'sub_category', type: 'varchar', nullable: true, length: 100 }) subCategory!: string | null;
-  @Column({ name: 'initial_qty', default: 0 }) initialQty!: number;
-  @Column({ name: 'qty_showroom', default: 0 }) qtyShowroom!: number;
-  @Column({ name: 'qty_storage1', default: 0 }) qtyStorage1!: number;
-  @Column({ name: 'qty_storage2', default: 0 }) qtyStorage2!: number;
+  /** Denormalized lifetime counter of units sold; the source of truth for stock is item_stocks. */
   @Column({ name: 'qty_sold', default: 0 }) qtySold!: number;
+  @Column({ name: 'initial_qty', default: 0 }) initialQty!: number;
   @Column({ name: 'unit_price', type: 'decimal', precision: 12, scale: 2, nullable: true }) unitPrice!: string | null;
   @Column({ length: 10, default: 'USD' }) currency!: string;
   @Column({ name: 'low_stock_threshold', default: 1 }) lowStockThreshold!: number;
