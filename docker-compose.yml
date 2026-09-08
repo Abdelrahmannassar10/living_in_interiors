@@ -1,0 +1,27 @@
+version: '3.8'
+
+# Local development database. Fresh-clone setup is:
+#   docker compose up -d
+#   pnpm migration:run
+#   pnpm seed
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: living_interiors_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-living_in_interiors}
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change_me}
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USERNAME:-postgres} -d ${DB_NAME:-living_in_interiors}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:
