@@ -1,5 +1,14 @@
-import { Body, Controller, Delete, Param, ParseIntPipe, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
 import { AddItemDto } from './dto/add-item.dto';
+import { UpdateQuotationDetailDto } from './dto/update-detail.dto';
 import { QuotationDetailsService } from './quotation-details.service';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { Roles } from '../common/decorators/roles.decorator';
+import { Role } from '../common/enums/role.enum';
 @Controller('quotation-details')
-export class QuotationDetailsController { constructor(private readonly service: QuotationDetailsService) {} @Post() add(@Body() dto: AddItemDto) { return this.service.addItem(dto); } @Delete(':id') remove(@Param('id', ParseIntPipe) id: number) { return this.service.softDelete(id); } }
+export class QuotationDetailsController {
+  constructor(private readonly service: QuotationDetailsService) {}
+  @Roles(Role.Admin, Role.Manager, Role.Staff) @Post() add(@Body() dto: AddItemDto, @CurrentUser() user?: { id: number }) { return this.service.addItem(dto, user?.id); }
+  @Roles(Role.Admin, Role.Manager, Role.Staff) @Patch(':id') update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateQuotationDetailDto, @CurrentUser() user?: { id: number }) { return this.service.updateItem(id, dto, user?.id); }
+  @Roles(Role.Admin, Role.Manager, Role.Staff) @Delete(':id') remove(@Param('id', ParseIntPipe) id: number, @CurrentUser() user?: { id: number }) { return this.service.softDelete(id, user?.id); }
+}

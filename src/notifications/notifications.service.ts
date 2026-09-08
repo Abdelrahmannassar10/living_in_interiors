@@ -1,32 +1,34 @@
-import { forwardRef, Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { Resend } from 'resend';
 import { ReportsService } from '../reports/reports.service';
 import { QuotationsService } from '../quotations/quotations.service';
 
+/**
+ * Email sending is fully decoupled from quotation status transitions:
+ * the caller transitions the status (PATCH /quotations/:id/status), then sends
+ * the email through this module. There is intentionally no auto status change here.
+ */
 @Injectable()
 export class NotificationsService {
-  constructor(@Inject(forwardRef(() => ReportsService)) private readonly reports: ReportsService, @Inject(forwardRef(() => QuotationsService)) private readonly quotations: QuotationsService) {}
+  constructor(
+    @Inject(ReportsService) private readonly reports: ReportsService,
+    @Inject(QuotationsService) private readonly quotations: QuotationsService,
+  ) {}
 
-  async sendQuotationEmail(quotationId: number, recipientEmail: string, updateStatus = true): Promise<void> {
-    await this.deliverQuotationEmail(quotationId, recipientEmail, updateStatus);
+  async sendQuotationEmail(quotationId: number, recipientEmail: string): Promise<void> {
+    await this.deliverQuotationEmail(quotationId, recipientEmail);
   }
 
   async testQuotationEmail(quotationId: number, recipientEmail: string) {
-    const result = await this.deliverQuotationEmail(quotationId, recipientEmail, true);
+    const result = await this.deliverQuotationEmail(quotationId, recipientEmail);
     return {
       quotationId,
-      pdf: {
-        created: true,
-        sizeBytes: result.pdfSizeBytes,
-      },
-      email: {
-        sent: true,
-        id: result.emailId,
-      },
+      pdf: { created: true, sizeBytes: result.pdfSizeBytes },
+      email: { sent: true, id: result.emailId },
     };
   }
 
-  private async deliverQuotationEmail(quotationId: number, recipientEmail: string, updateStatus: boolean) {
+  private async deliverQuotationEmail(quotationId: number, recipientEmail: string) {
     const apiKey = process.env.RESEND_API_KEY;
     const fromEmail = process.env.RESEND_FROM_EMAIL;
     if (!apiKey || !fromEmail) throw new ServiceUnavailableException('Resend email is not configured');
@@ -48,7 +50,6 @@ export class NotificationsService {
       attachments: [{ filename: `${quotation.quoteNo}.pdf`, content: pdf.toString('base64') }],
     });
     if (result.error) throw new ServiceUnavailableException(`Resend email failed: ${result.error.message}`);
-    if (updateStatus && quotation.status === 'Draft') await this.quotations.updateStatus(quotationId, 'Sent' as never);
     return { pdfSizeBytes: pdf.length, emailId: result.data?.id };
   }
 
