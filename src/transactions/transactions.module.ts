@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { GatewayModule } from '../gateway/gateway.module';
 import { StockAlertsModule } from '../stock-alerts/stock-alerts.module';
+import { SalesOrdersModule } from '../sales-orders/sales-orders.module';
 import { Item } from '../items/entities/item.entity';
 import { Location } from '../locations/entities/location.entity';
 import { Transaction } from './entities/transaction.entity';
@@ -14,6 +15,7 @@ import { TransactionsService } from './transactions.service';
     TypeOrmModule.forFeature([Transaction, Item, Location]),
     GatewayModule,
     StockAlertsModule,
+    SalesOrdersModule,
   ],
   controllers: [TransactionsController],
   providers: [InventoryService, TransactionsService],

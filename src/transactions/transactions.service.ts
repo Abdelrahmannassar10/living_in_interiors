@@ -23,6 +23,7 @@ import { AppGateway } from '../gateway/app.gateway';
 import { StockAlertsService } from '../stock-alerts/stock-alerts.service';
 import { AuditLog } from '../audit-log/entities/audit-log.entity';
 import { TransactionSearchDto } from './dto/search-transaction.dto';
+import { SalesOrdersService } from '../sales-orders/sales-orders.service';
 
 @Injectable()
 export class TransactionsService {
@@ -31,6 +32,7 @@ export class TransactionsService {
     private readonly inventory: InventoryService,
     private readonly gateway: AppGateway,
     private readonly stockAlerts: StockAlertsService,
+    private readonly salesOrders: SalesOrdersService,
     @InjectRepository(Transaction)
     private readonly transactions: Repository<Transaction>,
   ) {}
@@ -51,9 +53,10 @@ export class TransactionsService {
     return this.execute({
       itemCode: dto.itemCode,
       type: TransactionType.Sale,
-      fromLocationId: dto.fromLocationId,
+      fromLocationId: dto.salesOrderId ? undefined : dto.fromLocationId,
       qty: dto.qty,
       customerName: dto.customerName,
+      salesOrderId: dto.salesOrderId,
       referenceNo: dto.referenceNo,
       notes: dto.notes,
       actorId,
@@ -100,6 +103,7 @@ export class TransactionsService {
     adjustmentType?: AdjustmentType;
     adjustmentReason?: AdjustmentReason;
     customerName?: string;
+    salesOrderId?: number;
     referenceNo?: string;
     notes?: string;
     actorId?: number;
@@ -126,28 +130,44 @@ export class TransactionsService {
           `${toLocation?.name ?? 'Destination location'} is not a physical location`,
         );
 
-      const change: InventoryChange = {
-        item,
-        type: input.type,
-        fromLocation,
-        toLocation,
-        qty: input.qty,
-        adjustmentType: input.adjustmentType,
-        adjustmentReason: input.adjustmentReason,
-      };
-      const snapshots = await this.inventory.applyTransaction(manager, change);
-      await manager.save(item);
+      const isOrderLinkedSale =
+        input.type === TransactionType.Sale && !!input.salesOrderId;
+
+      let snapshots: Awaited<ReturnType<InventoryService['applyTransaction']>>;
+      if (isOrderLinkedSale) {
+        snapshots = await this.salesOrders.consumeReservedForOrder(
+          manager,
+          input.salesOrderId!,
+          item.id,
+          input.qty,
+        );
+        item.qtySold += input.qty;
+        await manager.save(item);
+      } else {
+        const change: InventoryChange = {
+          item,
+          type: input.type,
+          fromLocation,
+          toLocation,
+          qty: input.qty,
+          adjustmentType: input.adjustmentType,
+          adjustmentReason: input.adjustmentReason,
+        };
+        snapshots = await this.inventory.applyTransaction(manager, change);
+        await manager.save(item);
+      }
 
       const record = manager.create(Transaction, {
         item,
         transactionType: input.type,
-        fromLocation,
+        fromLocation: isOrderLinkedSale ? null : fromLocation,
         toLocation,
         qty: input.qty,
         adjustmentType: input.adjustmentType ?? null,
         adjustmentReason: input.adjustmentReason ?? null,
         customerName: input.customerName ?? null,
         referenceNo: input.referenceNo ?? null,
+        salesOrderId: input.salesOrderId ?? null,
         notes: input.notes ?? null,
         stockBefore: snapshots.before,
         stockAfter: snapshots.after,

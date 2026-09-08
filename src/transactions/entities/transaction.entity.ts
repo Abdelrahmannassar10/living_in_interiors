@@ -66,6 +66,9 @@ export class Transaction {
   })
   referenceNo!: string | null;
   @Column({ type: 'text', nullable: true }) notes!: string | null;
+  /** Sales order this record fulfills against (sale-with-order linkage). */
+  @Column({ name: 'sales_order_id', type: 'integer', nullable: true })
+  salesOrderId!: number | null;
   /** { "<locationId>": { onHand, reserved } } for the locations touched by this move */
   @Column({ name: 'stock_before', type: 'jsonb', nullable: true })
   stockBefore!: StockSnapshot | null;

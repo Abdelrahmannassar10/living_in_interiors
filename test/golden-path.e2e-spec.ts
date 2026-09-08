@@ -549,6 +549,113 @@ describe('Sales order reservation lifecycle (e2e)', () => {
     expect(over.body.success).toBe(false);
   });
 
+  it('records an order-linked sale (consumes reserved) and a return against it', async () => {
+    // Fresh item + order for self-contained stock math.
+    await request(app.getHttpServer())
+      .post(`${api}/items`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        code: 'ORD-SALE',
+        description: 'Order-linked sofa',
+        category: 'Sofas',
+        unitPrice: '900.00',
+        initialQty: 4,
+        initialLocationId: 1,
+        lowStockThreshold: 1,
+      })
+      .expect(201);
+
+    const created = await request(app.getHttpServer())
+      .post(`${api}/quotations`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        clientName: 'Order-linked Client',
+        email: 'ol@example.com',
+        currency: 'USD',
+      })
+      .expect(201);
+    const quotationId = created.body.data.id;
+    await request(app.getHttpServer())
+      .post(`${api}/quotation-details`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ quotationId, itemCode: 'ORD-SALE', qty: 2, unitPrice: 900 })
+      .expect(201);
+    await request(app.getHttpServer())
+      .patch(`${api}/quotations/${quotationId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'Sent' })
+      .expect(200);
+    await request(app.getHttpServer())
+      .patch(`${api}/quotations/${quotationId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'Approved' })
+      .expect(200);
+
+    const orderRes = await request(app.getHttpServer())
+      .post(`${api}/sales-orders/from-quotation/${quotationId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(201);
+    const orderId = orderRes.body.data.id;
+    await request(app.getHttpServer())
+      .post(`${api}/sales-orders/${orderId}/confirm`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(201);
+
+    const reserved = await request(app.getHttpServer())
+      .get(`${api}/items/ORD-SALE/stock`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(reserved.body.data.totalOnHand).toBe(4);
+    expect(reserved.body.data.totalAvailable).toBe(2);
+
+    // Sale WITHOUT fromLocationId → consumes the order's reservations.
+    const sale = await request(app.getHttpServer())
+      .post(`${api}/transactions/sale`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        itemCode: 'ORD-SALE',
+        qty: 2,
+        customerName: 'Order Buyer',
+        salesOrderId: orderId,
+      })
+      .expect(201);
+    expect(sale.body.data.transactionType).toBe('Sale');
+    expect(sale.body.data.salesOrderId).toBe(orderId);
+
+    const after = await request(app.getHttpServer())
+      .get(`${api}/items/ORD-SALE/stock`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(after.body.data.totalOnHand).toBe(2);
+    expect(after.body.data.totalAvailable).toBe(2); // reserved consumed with the sale
+
+    const closed = await request(app.getHttpServer())
+      .get(`${api}/sales-orders/${orderId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(closed.body.data.status).toBe('Closed');
+    expect(closed.body.data.lines[0].qtyDelivered).toBe(2);
+
+    // Return-against-order: previously sold unit comes back into stock.
+    const ret = await request(app.getHttpServer())
+      .post(`${api}/transactions/return`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        itemCode: 'ORD-SALE',
+        toLocationId: 1,
+        qty: 1,
+        customerName: 'Order Buyer',
+      })
+      .expect(201);
+    expect(ret.body.data.transactionType).toBe('Return');
+
+    const returned = await request(app.getHttpServer())
+      .get(`${api}/items/ORD-SALE/stock`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(returned.body.data.totalOnHand).toBe(3);
+  });
+
   afterAll(async () => {
     await app?.close();
   });

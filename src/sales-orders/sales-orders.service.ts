@@ -17,10 +17,13 @@ import { Quotation } from '../quotations/entities/quotation.entity';
 import { Reservation } from '../reservations/entities/reservation.entity';
 import { ItemsService } from '../items/items.service';
 import {
+  deliverFromReservations,
   reserveBestEffort,
   releaseReservation,
   ReserveAllocation,
+  snapshotRowsFor,
   StockRowState,
+  StockSnapshot,
 } from '../transactions/stock-engine';
 import { AddSalesOrderLineDto } from './dto/add-line.dto';
 import { UpdateSalesOrderLineDto } from './dto/update-line.dto';
@@ -431,6 +434,114 @@ export class SalesOrdersService {
       order.status = SalesOrderStatus.Cancelled;
       return manager.save(order);
     });
+  }
+
+  /**
+   * Sale recorded against a confirmed order: consumes the order's reserved
+   * quantity for the item (deliverFromReservations: reserved first, then
+   * unreserved availability so shortage lines can be fulfilled), trims the
+   * reservation rows, bumps line.qtyDelivered and auto-closes on full delivery.
+   * Returns before/after stock snapshots for the item's locations.
+   */
+  async consumeReservedForOrder(
+    manager: DataSource['manager'],
+    orderId: number,
+    itemId: number,
+    qty: number,
+  ): Promise<{ before: StockSnapshot; after: StockSnapshot }> {
+    const order = await manager.findOne(SalesOrder, {
+      where: { id: orderId },
+      lock: { mode: 'pessimistic_write' },
+      relations: ['lines', 'lines.item'],
+    });
+    if (!order) throw new NotFoundException('Sales order not found');
+    if (
+      order.status !== SalesOrderStatus.Confirmed &&
+      order.status !== SalesOrderStatus.Delivered
+    ) {
+      throw new BadRequestException(
+        'Only Confirmed or Delivered orders can be sold against',
+      );
+    }
+
+    const line = order.lines.find((candidate) => candidate.item?.id === itemId);
+    if (!line) throw new NotFoundException('Order has no line for this item');
+    const remaining = line.qty - line.qtyDelivered;
+    if (qty > remaining)
+      throw new BadRequestException(
+        `Sale exceeds outstanding order quantity (remaining ${remaining}, requested ${qty})`,
+      );
+
+    const reservations = await manager.find(Reservation, {
+      where: { salesOrder: { id: orderId }, item: { id: itemId } },
+      relations: ['location'],
+      order: { location: { id: 'ASC' } },
+    });
+
+    const stockRows = await manager
+      .createQueryBuilder(ItemStock, 'stock')
+      .setLock('pessimistic_write')
+      .leftJoinAndSelect('stock.location', 'location')
+      .where('stock.item_id = :itemId', { itemId })
+      .orderBy('stock.location_id', 'ASC')
+      .getMany();
+    const states: StockRowState[] = stockRows.map((row) => ({
+      locationId: row.location.id,
+      qtyOnHand: row.qtyOnHand,
+      qtyReserved: row.qtyReserved,
+    }));
+    const before = snapshotRowsFor(
+      states,
+      stockRows.map((row) => row.location.id),
+    );
+
+    deliverFromReservations(
+      states,
+      reservations.map((reservation) => ({
+        locationId: reservation.location.id,
+        qty: reservation.qty,
+      })),
+      qty,
+    );
+
+    const rowsByKey = new Map(stockRows.map((row) => [row.location.id, row]));
+    for (const state of states) {
+      const entity = rowsByKey.get(state.locationId);
+      if (!entity) continue;
+      entity.qtyOnHand = state.qtyOnHand;
+      entity.qtyReserved = state.qtyReserved;
+      await manager.save(entity);
+    }
+
+    // Trim the reservation rows consumed by this sale.
+    let toConsume = qty;
+    for (const reservation of reservations) {
+      if (toConsume <= 0) break;
+      const take = Math.min(reservation.qty, toConsume);
+      reservation.qty -= take;
+      toConsume -= take;
+      if (reservation.qty <= 0) await manager.remove(reservation);
+      else await manager.save(reservation);
+    }
+
+    line.qtyDelivered += qty;
+    await manager.save(line);
+
+    const allDelivered =
+      order.lines.length > 0 &&
+      order.lines.every((candidate) => candidate.qty <= candidate.qtyDelivered);
+    order.status = allDelivered
+      ? SalesOrderStatus.Closed
+      : SalesOrderStatus.Delivered;
+    await manager.save(order);
+
+    return {
+      before,
+      after: snapshotRowsFor(
+        states,
+        stockRows.map((row) => row.location.id),
+      ),
+    };
   }
 
   findAll() {
