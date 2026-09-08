@@ -14,7 +14,7 @@ import { Role } from '../common/enums/role.enum';
 export class StockAlertsController {
   constructor(private readonly service: StockAlertsService) {}
   @Get() all() {
-    return this.service.getAllAlertingItems();
+    return this.service.getAllAlerting();
   }
   @Get(':itemId') config(@Param('itemId', ParseIntPipe) id: number) {
     return this.service.getConfig(id);

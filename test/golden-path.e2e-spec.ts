@@ -5,6 +5,7 @@ import * as bcrypt from 'bcrypt';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
+import { QuotationsService } from './../src/quotations/quotations.service';
 import { User } from './../src/users/entities/user.entity';
 import { Item } from './../src/items/entities/item.entity';
 import { Location } from './../src/locations/entities/location.entity';
@@ -654,6 +655,154 @@ describe('Sales order reservation lifecycle (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
     expect(returned.body.data.totalOnHand).toBe(3);
+  });
+
+  it('raises exactly one low-stock inbox alert and marks it read', async () => {
+    const itemCode = `LOW${Date.now()}`;
+    await request(app.getHttpServer())
+      .post(`${api}/items`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        code: itemCode,
+        description: 'Low stock window seat',
+        category: 'Sofas',
+        unitPrice: '500.00',
+        initialQty: 5,
+        initialLocationId: 1,
+        lowStockThreshold: 3,
+      })
+      .expect(201);
+
+    // Drop available stock from 5 to 2 (threshold 3) -> must alert.
+    await request(app.getHttpServer())
+      .post(`${api}/transactions/sale`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        itemCode,
+        fromLocationId: 1,
+        qty: 3,
+        customerName: 'Alert Tester',
+      })
+      .expect(201);
+
+    const inbox = (
+      await request(app.getHttpServer())
+        .get(`${api}/notifications`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200)
+    ).body.data as Array<{
+      id: number;
+      type: string;
+      payload: { itemCode?: string } | null;
+      readAt: string | null;
+    }>;
+    const alerts = inbox.filter(
+      (n) => n.type === 'stock-low' && n.payload?.itemCode === itemCode,
+    );
+    expect(alerts).toHaveLength(1);
+
+    // Quiet period: another drop below threshold must NOT create a duplicate.
+    await request(app.getHttpServer())
+      .post(`${api}/transactions/sale`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        itemCode,
+        fromLocationId: 1,
+        qty: 1,
+        customerName: 'Alert Tester',
+      })
+      .expect(201);
+
+    const after = (
+      await request(app.getHttpServer())
+        .get(`${api}/notifications`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200)
+    ).body.data as Array<{
+      id: number;
+      type: string;
+      payload: { itemCode?: string } | null;
+      readAt: string | null;
+    }>;
+    const alertsAfter = after.filter(
+      (n) => n.type === 'stock-low' && n.payload?.itemCode === itemCode,
+    );
+    expect(alertsAfter).toHaveLength(1);
+
+    const read = await request(app.getHttpServer())
+      .patch(`${api}/notifications/${alerts[0].id}/read`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(read.body.data.readAt).toBeTruthy();
+  });
+
+  it('auto-expires Sent quotations past valid_until (daily job logic)', async () => {
+    const itemCode = `EXP${Date.now()}`;
+    await request(app.getHttpServer())
+      .post(`${api}/items`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        code: itemCode,
+        description: 'Expiry test item',
+        category: 'Sofas',
+        unitPrice: '100.00',
+        initialQty: 1,
+        initialLocationId: 1,
+        lowStockThreshold: 0,
+      })
+      .expect(201);
+
+    const today = new Date();
+    const past = new Date(today.getTime() - 86400000)
+      .toISOString()
+      .slice(0, 10);
+    const future = new Date(today.getTime() + 86400000)
+      .toISOString()
+      .slice(0, 10);
+
+    const createSent = async (validUntil: string): Promise<number> => {
+      const created = await request(app.getHttpServer())
+        .post(`${api}/quotations`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          clientName: 'Expiry Client',
+          email: 'exp@example.com',
+          currency: 'USD',
+          validUntil,
+        })
+        .expect(201);
+      const id: number = created.body.data.id;
+      await request(app.getHttpServer())
+        .post(`${api}/quotation-details`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ quotationId: id, itemCode, qty: 1, unitPrice: 100 })
+        .expect(201);
+      await request(app.getHttpServer())
+        .patch(`${api}/quotations/${id}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ status: 'Sent' })
+        .expect(200);
+      return id;
+    };
+
+    const pastId = await createSent(past);
+    const futureId = await createSent(future);
+
+    const quotationsService = app.get(QuotationsService);
+    const affected = await quotationsService.expireOutdated();
+    expect(affected).toBeGreaterThanOrEqual(1);
+
+    const pastQuote = await request(app.getHttpServer())
+      .get(`${api}/quotations/${pastId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(pastQuote.body.data.status).toBe('Expired');
+
+    const futureQuote = await request(app.getHttpServer())
+      .get(`${api}/quotations/${futureId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(futureQuote.body.data.status).toBe('Sent');
   });
 
   afterAll(async () => {

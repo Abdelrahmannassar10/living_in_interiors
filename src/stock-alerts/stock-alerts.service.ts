@@ -1,9 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { Role } from '../common/enums/role.enum';
 import { Item } from '../items/entities/item.entity';
 import { ItemStock } from '../items/entities/item-stock.entity';
 import { AppGateway } from '../gateway/app.gateway';
+import { NotificationsService } from '../notifications/notifications.service';
 import { SetAlertConfigDto } from './dto/set-alert-config.dto';
 import { StockAlertConfig } from './entities/stock-alert-config.entity';
 import { Transaction } from '../transactions/entities/transaction.entity';
@@ -18,6 +20,7 @@ export class StockAlertsService {
     private readonly configs: Repository<StockAlertConfig>,
     @InjectRepository(Item) private readonly items: Repository<Item>,
     private readonly gateway: AppGateway,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async getConfig(itemId: number) {
@@ -44,10 +47,15 @@ export class StockAlertsService {
   }
 
   /** All active items whose availability is at or below their effective threshold — computed in SQL. */
-  getAllAlertingItems() {
-    return this.items
+  async getAllAlerting() {
+    const rows: Array<{
+      item_id: string;
+      code: string;
+      description: string | null;
+      available: string;
+      threshold: string;
+    }> = await this.items
       .createQueryBuilder('item')
-      .leftJoinAndSelect('item.brand', 'brand')
       .innerJoin(
         (qb) =>
           qb
@@ -58,9 +66,24 @@ export class StockAlertsService {
         'stock_sum',
         'stock_sum.item_id = item.id',
       )
+      .select('item.id', 'item_id')
+      .addSelect('item.code', 'code')
+      .addSelect('item.description', 'description')
+      .addSelect('CAST(stock_sum.available AS INTEGER)', 'available')
+      .addSelect('item.low_stock_threshold', 'threshold')
       .where('item.is_active = true')
-      .andWhere('stock_sum.available <= item.low_stock_threshold')
-      .getMany();
+      .andWhere(
+        'CAST(stock_sum.available AS INTEGER) <= item.low_stock_threshold',
+      )
+      .orderBy('item.code', 'ASC')
+      .getRawMany();
+    return rows.map((row) => ({
+      itemId: Number(row.item_id),
+      code: row.code,
+      description: row.description,
+      available: Number(row.available),
+      threshold: Number(row.threshold),
+    }));
   }
 
   /**
@@ -108,6 +131,16 @@ export class StockAlertsService {
         item.description,
         available,
         config.threshold,
+      );
+      await this.notifications.createForRoles(
+        'stock-low',
+        {
+          itemId: item.id,
+          itemCode: item.code,
+          available,
+          threshold: config.threshold,
+        },
+        [Role.Admin, Role.Manager],
       );
     } catch {
       // Alerting must never fail the transaction flow.

@@ -8,4 +8,5 @@ export enum WsEvents {
   QUOTATION_STATUS = 'quotation:status',
   ITEM_CREATED = 'item:created',
   ITEM_UPDATED = 'item:updated',
+  NOTIFICATION_CREATED = 'notification:created',
 }

@@ -92,4 +92,9 @@ export class AppGateway implements OnGatewayConnection, OnGatewayDisconnect {
   emitItemEvent(event: WsEvents, payload: object) {
     this.server.emit(event, payload);
   }
+  emitNotification(userId: number, notification: unknown) {
+    this.server
+      .to(`user:${userId}`)
+      .emit(WsEvents.NOTIFICATION_CREATED, notification);
+  }
 }

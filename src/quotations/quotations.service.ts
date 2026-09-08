@@ -192,4 +192,20 @@ export class QuotationsService {
       }),
     );
   }
+
+  /**
+   * Daily expiry job: flip Sent quotations whose valid_until has passed to
+   * Expired. Returns the number of quotations updated.
+   */
+  async expireOutdated(): Promise<number> {
+    const result = await this.quotations
+      .createQueryBuilder()
+      .update(Quotation)
+      .set({ status: QuotationStatus.Expired })
+      .where('status = :sent', { sent: QuotationStatus.Sent })
+      .andWhere('valid_until IS NOT NULL')
+      .andWhere('valid_until < CURRENT_DATE')
+      .execute();
+    return result.affected ?? 0;
+  }
 }

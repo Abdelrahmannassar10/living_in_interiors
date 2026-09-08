@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { appConfig, appValidationSchema } from './config/app.config';
@@ -28,6 +29,7 @@ import { SuppliersModule } from './suppliers/suppliers.module';
 import { SalesOrdersModule } from './sales-orders/sales-orders.module';
 import { DeliveriesModule } from './deliveries/deliveries.module';
 import { ReservationsModule } from './reservations/reservations.module';
+import { TasksModule } from './tasks/tasks.module';
 
 @Module({
   imports: [
@@ -40,6 +42,7 @@ import { ReservationsModule } from './reservations/reservations.module';
       useFactory: databaseConfig,
       inject: [ConfigService],
     }),
+    ScheduleModule.forRoot(),
     AuthModule,
     UsersModule,
     BrandsModule,
@@ -60,6 +63,7 @@ import { ReservationsModule } from './reservations/reservations.module';
     ReservationsModule,
     SalesOrdersModule,
     DeliveriesModule,
+    TasksModule,
   ],
   controllers: [AppController],
   providers: [
