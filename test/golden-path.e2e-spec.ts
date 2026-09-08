@@ -1130,3 +1130,384 @@ describe('Purchasing flow (Phase 3)', () => {
     await app?.close();
   });
 });
+
+describe('Finance-lite & reports (Phase 4)', () => {
+  let app: INestApplication<App>;
+  let dataSource: DataSource;
+  let adminToken: string;
+
+  const api = '/api/v1';
+
+  let finCode: string;
+  let finItemId: number;
+  let supplierId: number;
+  let clientId: number;
+  let clientName: string;
+  let orderId: number;
+  let orderLineId: number;
+  let invoiceANo: string;
+  let invoiceAId: number;
+  let invoiceBNo: string;
+  let invoiceBId: number;
+  let invoiceCId: number;
+
+  beforeAll(async () => {
+    process.env.NODE_ENV = 'test';
+    process.env.JWT_ACCESS_SECRET =
+      process.env.JWT_ACCESS_SECRET ??
+      'e2e_access_secret_that_is_longer_than_32_chars';
+    process.env.JWT_REFRESH_SECRET =
+      process.env.JWT_REFRESH_SECRET ??
+      'e2e_refresh_secret_that_is_longer_than_32_chars';
+    process.env.DB_LOGGING = 'false';
+
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = moduleFixture.createNestApplication();
+    dataSource = app.get(DataSource);
+
+    const locationRepo = dataSource.getRepository(Location);
+    for (const name of ['Showroom', 'Storage 1', 'Storage 2']) {
+      if (!(await locationRepo.findOneBy({ name })))
+        await locationRepo.save(
+          locationRepo.create({
+            name,
+            type: LocationType.Storage,
+            isPhysical: true,
+          }),
+        );
+    }
+
+    const userRepo = dataSource.getRepository(User);
+    const password = await bcrypt.hash('Admin1234test', 12);
+    if (!(await userRepo.findOneBy({ username: 'e2e_admin' }))) {
+      await userRepo.save(
+        userRepo.create({
+          username: 'e2e_admin',
+          password,
+          fullName: 'E2E Admin',
+          role: Role.Admin,
+          isActive: true,
+        }),
+      );
+    }
+
+    await app.init();
+    const login = await request(app.getHttpServer())
+      .post(`${api}/auth/login`)
+      .send({ username: 'e2e_admin', password: 'Admin1234test' })
+      .expect(201);
+    adminToken = login.body.data.accessToken;
+  }, 60000);
+
+  it('stocks an item with a known cost through a PO + receipt', async () => {
+    finCode = `FIN${Date.now()}`;
+    const sup = await request(app.getHttpServer())
+      .post(`${api}/suppliers`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: `E2E Fin Supplier ${Date.now()}`, country: 'Egypt' })
+      .expect(201);
+    supplierId = sup.body.data.id;
+
+    const item = await request(app.getHttpServer())
+      .post(`${api}/items`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        code: finCode,
+        description: 'Phase 4 finance item',
+        category: 'Accessories',
+        unitPrice: '80.00',
+      })
+      .expect(201);
+    finItemId = item.body.data.id;
+
+    const storage = await dataSource.getRepository(Location).findOneBy({
+      name: 'Storage 1',
+    });
+    expect(storage).toBeDefined();
+    const locationId = storage!.id;
+
+    const po = await request(app.getHttpServer())
+      .post(`${api}/purchase-orders`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        supplierId,
+        expectedDate: '2026-01-15',
+        lines: [{ itemCode: finCode, qty: 5, unitCost: 80 }],
+      })
+      .expect(201);
+    const poId = po.body.data.id;
+    const poLineId = po.body.data.lines[0].id;
+    await request(app.getHttpServer())
+      .post(`${api}/purchase-orders/${poId}/send`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(201);
+    const receipt = await request(app.getHttpServer())
+      .post(`${api}/purchase-orders/${poId}/goods-receipts`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ lines: [{ lineId: poLineId, qty: 5, toLocationId: locationId }] })
+      .expect(201);
+    expect(receipt.body.data.receiptNo).toMatch(/^GR-\d{2}-\d{4}$/);
+
+    const price = await dataSource.getRepository(SupplierPriceList).findOne({
+      where: { supplier: { id: supplierId }, item: { id: finItemId } },
+    });
+    expect(price?.cost).toBe('80.00');
+  });
+
+  it('creates a client and a Draft sales order for 3 units at 250', async () => {
+    const client = await request(app.getHttpServer())
+      .post(`${api}/clients`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: `E2E Finance Client ${Date.now()}` })
+      .expect(201);
+    clientId = client.body.data.id;
+    clientName = client.body.data.name;
+
+    const order = await request(app.getHttpServer())
+      .post(`${api}/sales-orders`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ clientId, notes: 'Phase 4 golden path' })
+      .expect(201);
+    orderId = order.body.data.id;
+
+    const line = await request(app.getHttpServer())
+      .post(`${api}/sales-orders/${orderId}/lines`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ itemCode: finCode, qty: 3, unitPrice: 250 })
+      .expect(201);
+    orderLineId = line.body.data.id;
+    expect(line.body.data.unitPrice).toBe('250.00');
+  });
+
+  it('confirms the order and delivers in full (auto-Closes)', async () => {
+    await request(app.getHttpServer())
+      .post(`${api}/sales-orders/${orderId}/confirm`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(201);
+
+    const delivery = await request(app.getHttpServer())
+      .post(`${api}/sales-orders/${orderId}/deliveries`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ lines: [{ salesOrderLineId: orderLineId, qty: 3 }] })
+      .expect(201);
+    expect(delivery.body.data.deliveryNo).toMatch(/^DEL-\d{2}-\d{4}$/);
+
+    const order = await request(app.getHttpServer())
+      .get(`${api}/sales-orders/${orderId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(order.body.data.status).toBe('Closed');
+    expect(order.body.data.lines[0].qtyDelivered).toBe(3);
+
+    const stock = await request(app.getHttpServer())
+      .get(`${api}/items/${finCode}/stock`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(stock.body.data.totalOnHand).toBe(2);
+  });
+
+  it('creates an invoice from the delivered order with frozen totals', async () => {
+    const invoice = await request(app.getHttpServer())
+      .post(`${api}/invoices`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ salesOrderId: orderId })
+      .expect(201);
+    const data = invoice.body.data;
+    expect(data.invoiceNo).toMatch(/^INV-\d{2}-\d{4}$/);
+    expect(data.status).toBe('Open');
+    expect(data.client.id).toBe(clientId);
+    expect(data.clientName).toBe(clientName);
+    expect(data.salesOrder.id).toBe(orderId);
+    expect(data.subtotal).toBe('750.00');
+    expect(data.total).toBe('750.00');
+    expect(data.lines).toHaveLength(1);
+    expect(data.lines[0].qty).toBe(3);
+    expect(data.lines[0].unitPrice).toBe('250.00');
+    expect(data.lines[0].totalPrice).toBe('750.00');
+    invoiceANo = data.invoiceNo;
+    invoiceAId = data.id;
+  });
+
+  it('order detail shows the margin vs the latest known cost', async () => {
+    const order = await request(app.getHttpServer())
+      .get(`${api}/sales-orders/${orderId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(order.body.data.margin).toEqual({
+      revenue: 750,
+      cost: 240,
+      margin: 510,
+    });
+  });
+
+  it('stock valuation values on-hand qty at the latest cost', async () => {
+    const report = await request(app.getHttpServer())
+      .get(`${api}/reports/stock-valuation`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    const rows = report.body.data.rows as Array<{
+      itemCode: string;
+      qtyOnHand: number;
+      unitCost: number;
+      value: number;
+    }>;
+    const row = rows.find((r) => r.itemCode === finCode);
+    expect(row).toBeDefined();
+    expect(row?.qtyOnHand).toBe(2);
+    expect(row?.unitCost).toBe(80);
+    expect(row?.value).toBe(160);
+    expect(report.body.data.grandTotal).toBeGreaterThanOrEqual(160);
+  });
+
+  it('creates a manual invoice and a credit note for the same client', async () => {
+    const manual = await request(app.getHttpServer())
+      .post(`${api}/invoices/manual`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        clientId,
+        lines: [
+          { description: 'Design consultation', qty: 1, unitPrice: '100.00' },
+        ],
+      })
+      .expect(201);
+    expect(manual.body.data.total).toBe('100.00');
+    expect(manual.body.data.clientName).toBe(clientName);
+    invoiceBNo = manual.body.data.invoiceNo;
+    invoiceBId = manual.body.data.id;
+
+    const credit = await request(app.getHttpServer())
+      .post(`${api}/invoices/manual`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        clientId,
+        lines: [{ description: 'Refund', qty: 1, unitPrice: '-50.00' }],
+      })
+      .expect(201);
+    expect(credit.body.data.total).toBe('-50.00');
+    invoiceCId = credit.body.data.id;
+  });
+
+  it('allocates a partial payment FIFO against the oldest invoice first', async () => {
+    const payment = await request(app.getHttpServer())
+      .post(`${api}/payments`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ clientId, amount: 300, method: 'bank' })
+      .expect(201);
+    expect(payment.body.data.paymentNo).toMatch(/^PAY-\d{2}-\d{4}$/);
+    expect(payment.body.data.amount).toBe('300.00');
+    expect(payment.body.data.allocations).toHaveLength(1);
+    expect(payment.body.data.allocations[0].invoice.id).toBe(invoiceAId);
+    expect(payment.body.data.allocations[0].amount).toBe('300.00');
+
+    const invA = await request(app.getHttpServer())
+      .get(`${api}/invoices/${invoiceAId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(invA.body.data.status).toBe('PartiallyPaid');
+    expect(invA.body.data.allocated).toBe(300);
+    expect(invA.body.data.balance).toBe(450);
+
+    const invB = await request(app.getHttpServer())
+      .get(`${api}/invoices/${invoiceBId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(invB.body.data.status).toBe('Open');
+    expect(invB.body.data.balance).toBe(100);
+  });
+
+  it('AR aging buckets the open balances and exports a CSV', async () => {
+    const aging = await request(app.getHttpServer())
+      .get(`${api}/invoices/aging`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    const rows = aging.body.data.rows as Array<{
+      invoiceId: number;
+      invoiceNo: string;
+      balance: number;
+      total: number;
+      allocated: number;
+      bucket: string;
+    }>;
+    expect(rows).toHaveLength(2);
+    expect(rows[0].invoiceNo).toBe(invoiceANo);
+    expect(rows[0].balance).toBe(450);
+    expect(rows[1].invoiceNo).toBe(invoiceBNo);
+    expect(rows[1].balance).toBe(100);
+    expect(rows.find((r) => r.invoiceId === invoiceCId)).toBeUndefined();
+    const buckets = aging.body.data.buckets as Array<{
+      bucket: string;
+      total: number;
+    }>;
+    expect(buckets.find((b) => b.bucket === '0-30')?.total).toBe(550);
+    expect(aging.body.data.grandTotal).toBe(550);
+
+    const csv = await request(app.getHttpServer())
+      .get(`${api}/invoices/aging.csv`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(csv.headers['content-type']).toContain('text/csv');
+    expect(csv.text).toContain('invoiceNo');
+    expect(csv.text).toContain(invoiceANo);
+  });
+
+  it('rejects overpayment beyond the open balance (422, rollback)', async () => {
+    await request(app.getHttpServer())
+      .post(`${api}/payments`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ clientId, amount: 1000 })
+      .expect(422);
+
+    const invA = await request(app.getHttpServer())
+      .get(`${api}/invoices/${invoiceAId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(invA.body.data.balance).toBe(450);
+  });
+
+  it('a settling payment clears both invoices and empties the aging report', async () => {
+    const settle = await request(app.getHttpServer())
+      .post(`${api}/payments`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ clientId, amount: 550 })
+      .expect(201);
+    expect(settle.body.data.allocations).toHaveLength(2);
+
+    const aging = await request(app.getHttpServer())
+      .get(`${api}/invoices/aging`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(aging.body.data.rows).toHaveLength(0);
+    expect(aging.body.data.grandTotal).toBe(0);
+
+    const invA = await request(app.getHttpServer())
+      .get(`${api}/invoices/${invoiceAId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(invA.body.data.status).toBe('Paid');
+    const invB = await request(app.getHttpServer())
+      .get(`${api}/invoices/${invoiceBId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(invB.body.data.status).toBe('Paid');
+  });
+
+  it('refuses to invoice an order that is not Delivered or Closed', async () => {
+    const draft = await request(app.getHttpServer())
+      .post(`${api}/sales-orders`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ clientId })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`${api}/invoices`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ salesOrderId: draft.body.data.id })
+      .expect(400);
+  });
+
+  afterAll(async () => {
+    await app?.close();
+  });
+});

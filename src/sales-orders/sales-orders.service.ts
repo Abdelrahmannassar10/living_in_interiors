@@ -14,6 +14,7 @@ import { QuotationStatus } from '../common/enums/quotation-status.enum';
 import { SalesOrderStatus } from '../common/enums/sales-order-status.enum';
 import { LocationType } from '../common/enums/location-type.enum';
 import { Quotation } from '../quotations/entities/quotation.entity';
+import { fromCents, toCents } from '../quotations/totals';
 import { Reservation } from '../reservations/entities/reservation.entity';
 import { ItemsService } from '../items/items.service';
 import {
@@ -566,7 +567,57 @@ export class SalesOrdersService {
     });
     if (!order) throw new NotFoundException('Sales order not found');
     order.lines.sort((a, b) => a.sortOrder - b.sortOrder);
-    return order;
+    const margin = await this.computeMargin(order.lines, this.orders.manager);
+    return { ...order, margin };
+  }
+
+  /**
+   * Order margin: revenue (sum of line totals after line discount) minus the
+   * cost of the sold quantities valued at the latest known supplier cost per
+   * item (falling back to 0 when no price list exists yet). No item_costs table
+   * is maintained in Phase 4 — costs are read at request time.
+   */
+  private async computeMargin(
+    lines: SalesOrderLine[],
+    manager: DataSource['manager'],
+  ): Promise<{ revenue: number; cost: number; margin: number } | null> {
+    if (lines.length === 0) return null;
+    const itemIds = [...new Set(lines.map((line) => line.item?.id))].filter(
+      (id): id is number => typeof id === 'number',
+    );
+    const costById = new Map<number, number>();
+    if (itemIds.length > 0) {
+      const rows: Array<{ itemId: number; cost: string }> = await manager.query(
+        `WITH latest_cost AS (
+           SELECT DISTINCT ON (spl.item_id) spl.item_id, spl.cost
+           FROM supplier_price_lists spl
+           WHERE spl.item_id = ANY($1::int[])
+           ORDER BY spl.item_id, spl.effective_date DESC, spl.id DESC
+         )
+         SELECT item_id AS "itemId", cost FROM latest_cost`,
+        [itemIds],
+      );
+      for (const row of rows) costById.set(row.itemId, Number(row.cost));
+    }
+    const revenue = Math.round(
+      lines.reduce(
+        (sum, line) => sum + toCents(line.totalPriceAfterDiscount),
+        0,
+      ),
+    );
+    const cost = Math.round(
+      lines.reduce(
+        (sum, line) =>
+          sum +
+          Math.round(line.qty * (costById.get(line.item?.id ?? -1) ?? 0) * 100),
+        0,
+      ),
+    );
+    return {
+      revenue: fromCents(revenue),
+      cost: fromCents(cost),
+      margin: fromCents(revenue - cost),
+    };
   }
 
   private async allocateOrderNo(

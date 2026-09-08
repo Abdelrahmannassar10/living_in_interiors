@@ -1,6 +1,7 @@
 import { Controller, Get, Param, ParseIntPipe, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { ReportsService } from './reports.service';
+
 @Controller('reports')
 export class ReportsController {
   constructor(private readonly reports: ReportsService) {}
@@ -15,5 +16,10 @@ export class ReportsController {
         'Content-Disposition': `attachment; filename="quotation-${id}.pdf"`,
       })
       .send(pdf);
+  }
+
+  @Get('stock-valuation')
+  stockValuation() {
+    return this.reports.stockValuation();
   }
 }
