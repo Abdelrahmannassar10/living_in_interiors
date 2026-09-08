@@ -15,29 +15,47 @@ async function bootstrap() {
   const port = Number(process.env.PORT ?? 3000);
 
   app.setGlobalPrefix(apiPrefix);
-  (app.getHttpAdapter().getInstance() as import('express').Express).set('trust proxy', 1);
+  (app.getHttpAdapter().getInstance() as import('express').Express).set(
+    'trust proxy',
+    1,
+  );
   app.use(helmet());
   app.enableCors({
-    origin: process.env.CORS_ALLOW_ALL === 'true'
-      ? true
-      : (process.env.ALLOWED_ORIGINS ?? '').split(',').map((origin) => origin.trim()).filter(Boolean),
+    origin:
+      process.env.CORS_ALLOW_ALL === 'true'
+        ? true
+        : (process.env.ALLOWED_ORIGINS ?? '')
+            .split(',')
+            .map((origin) => origin.trim())
+            .filter(Boolean),
   });
-  app.use(rateLimit({
-    windowMs: 15 * 60 * 1000,
-    limit: 1000,
-  }));
+  app.use(
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      limit: 1000,
+    }),
+  );
   // Stricter limiter for credential endpoints.
-  app.use(`${apiPrefix}/auth`, rateLimit({
-    windowMs: 15 * 60 * 1000,
-    limit: 30,
-  }));
+  app.use(
+    `${apiPrefix}/auth`,
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      limit: 30,
+    }),
+  );
   // ClassSerializer first so entities are plain + @Exclude-stripped before the envelope wraps them.
-  app.useGlobalInterceptors(new ClassSerializerInterceptor(reflector), new ResponseTransformInterceptor(), new LoggingInterceptor());
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,
-    forbidNonWhitelisted: true,
-    transform: true,
-  }));
+  app.useGlobalInterceptors(
+    new ClassSerializerInterceptor(reflector),
+    new ResponseTransformInterceptor(),
+    new LoggingInterceptor(),
+  );
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
   app.useGlobalFilters(new GlobalExceptionFilter());
 
   if (process.env.NODE_ENV !== 'production') {
@@ -47,9 +65,13 @@ async function bootstrap() {
       .setVersion('1.0')
       .addBearerAuth()
       .build();
-    SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, swaggerConfig));
+    SwaggerModule.setup(
+      'docs',
+      app,
+      SwaggerModule.createDocument(app, swaggerConfig),
+    );
   }
 
   await app.listen(port, '0.0.0.0');
 }
-bootstrap();
+void bootstrap();

@@ -14,10 +14,21 @@ export class NumberingService {
    * @param initValue called only when the scope row does not exist yet; should
    * derive the last used number from existing documents so sequences stay continuous.
    */
-  async next(manager: EntityManager, scope: string, format: (value: number) => string, initValue: () => Promise<number>): Promise<string> {
-    let row = await manager.findOne(NumberSequence, { where: { scope }, lock: { mode: 'pessimistic_write' } });
+  async next(
+    manager: EntityManager,
+    scope: string,
+    format: (value: number) => string,
+    initValue: () => Promise<number>,
+  ): Promise<string> {
+    let row = await manager.findOne(NumberSequence, {
+      where: { scope },
+      lock: { mode: 'pessimistic_write' },
+    });
     if (!row) {
-      row = manager.create(NumberSequence, { scope, nextValue: (await initValue()) + 1 });
+      row = manager.create(NumberSequence, {
+        scope,
+        nextValue: (await initValue()) + 1,
+      });
       await manager.save(row);
       return format(row.nextValue);
     }

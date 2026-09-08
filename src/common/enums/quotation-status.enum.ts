@@ -5,4 +5,5 @@ export enum QuotationStatus {
   Rejected = 'Rejected',
   Cancelled = 'Cancelled',
   Expired = 'Expired',
+  Converted = 'Converted',
 }

@@ -8,7 +8,10 @@ import { AuditInterceptor } from './audit.interceptor';
 @Module({
   imports: [TypeOrmModule.forFeature([AuditLog])],
   controllers: [AuditLogController],
-  providers: [AuditLogService, { provide: APP_INTERCEPTOR, useClass: AuditInterceptor }],
+  providers: [
+    AuditLogService,
+    { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
+  ],
   exports: [AuditLogService],
 })
 export class AuditLogModule {}

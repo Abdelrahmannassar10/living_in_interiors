@@ -11,25 +11,36 @@ import { Client } from './entities/client.entity';
 export class ClientsService {
   constructor(
     @InjectRepository(Client) private readonly clients: Repository<Client>,
-    @InjectRepository(Quotation) private readonly quotations: Repository<Quotation>,
-    @InjectRepository(Transaction) private readonly transactions: Repository<Transaction>,
+    @InjectRepository(Quotation)
+    private readonly quotations: Repository<Quotation>,
+    @InjectRepository(Transaction)
+    private readonly transactions: Repository<Transaction>,
   ) {}
 
   findAll(search?: string) {
     return this.clients.find({
-      where: search ? { isActive: true, name: ILike(`%${search}%`) } : { isActive: true },
+      where: search
+        ? { isActive: true, name: ILike(`%${search}%`) }
+        : { isActive: true },
       order: { name: 'ASC' },
     });
   }
 
   async findOne(id: number) {
-    const client = await this.clients.findOne({ where: { id, isActive: true } });
+    const client = await this.clients.findOne({
+      where: { id, isActive: true },
+    });
     if (!client) throw new NotFoundException('Client not found');
     return client;
   }
 
   create(dto: CreateClientDto, actorId?: number) {
-    return this.clients.save(this.clients.create({ ...dto, createdBy: actorId ? { id: actorId } : null }));
+    return this.clients.save(
+      this.clients.create({
+        ...dto,
+        createdBy: actorId ? { id: actorId } : null,
+      }),
+    );
   }
 
   async update(id: number, dto: UpdateClientDto) {
@@ -48,8 +59,13 @@ export class ClientsService {
   async history(id: number) {
     const client = await this.findOne(id);
     const [quotations, transactions] = await Promise.all([
-      this.quotations.find({ where: { client: { id: client.id } }, order: { createdAt: 'DESC' }, take: 50 }),
-      this.transactions.createQueryBuilder('transaction')
+      this.quotations.find({
+        where: { client: { id: client.id } },
+        order: { createdAt: 'DESC' },
+        take: 50,
+      }),
+      this.transactions
+        .createQueryBuilder('transaction')
         .where('transaction.customer_name = :name', { name: client.name })
         .leftJoinAndSelect('transaction.item', 'item')
         .orderBy('transaction.transactionDate', 'DESC')

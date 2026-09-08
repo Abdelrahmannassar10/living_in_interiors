@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
@@ -24,6 +24,10 @@ import { StockAlertsModule } from './stock-alerts/stock-alerts.module';
 import { AuditLogModule } from './audit-log/audit-log.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { SuppliersModule } from './suppliers/suppliers.module';
+import { SalesOrdersModule } from './sales-orders/sales-orders.module';
+import { DeliveriesModule } from './deliveries/deliveries.module';
+import { ReservationsModule } from './reservations/reservations.module';
 
 @Module({
   imports: [
@@ -52,6 +56,10 @@ import { NotificationsModule } from './notifications/notifications.module';
     AuditLogModule,
     DashboardModule,
     NotificationsModule,
+    SuppliersModule,
+    ReservationsModule,
+    SalesOrdersModule,
+    DeliveriesModule,
   ],
   controllers: [AppController],
   providers: [

@@ -10,7 +10,11 @@ import { TransactionsController } from './transactions.controller';
 import { TransactionsService } from './transactions.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Transaction, Item, Location]), GatewayModule, StockAlertsModule],
+  imports: [
+    TypeOrmModule.forFeature([Transaction, Item, Location]),
+    GatewayModule,
+    StockAlertsModule,
+  ],
   controllers: [TransactionsController],
   providers: [InventoryService, TransactionsService],
   exports: [InventoryService, TransactionsService],

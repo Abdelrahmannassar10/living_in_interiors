@@ -11,33 +11,45 @@ import { Transaction } from '../transactions/entities/transaction.entity';
 export class DashboardService {
   constructor(
     @InjectRepository(Item) private readonly items: Repository<Item>,
-    @InjectRepository(Quotation) private readonly quotations: Repository<Quotation>,
+    @InjectRepository(Quotation)
+    private readonly quotations: Repository<Quotation>,
     @InjectRepository(Client) private readonly clients: Repository<Client>,
-    @InjectRepository(Transaction) private readonly transactions: Repository<Transaction>,
+    @InjectRepository(Transaction)
+    private readonly transactions: Repository<Transaction>,
   ) {}
 
   /** All aggregates computed in SQL — no full-table loads into JS. */
   async summary() {
-    const [totalItems, totalActiveItems, totalQuotations, totalClients] = await Promise.all([
-      this.items.count(),
-      this.items.count({ where: { isActive: true } }),
-      this.quotations.count(),
-      this.clients.count({ where: { isActive: true } }),
-    ]);
+    const [totalItems, totalActiveItems, totalQuotations, totalClients] =
+      await Promise.all([
+        this.items.count(),
+        this.items.count({ where: { isActive: true } }),
+        this.quotations.count(),
+        this.clients.count({ where: { isActive: true } }),
+      ]);
 
     const stockAgg = await this.items
       .createQueryBuilder('item')
       .innerJoin(
-        (qb) => qb.select('s.item_id', 'item_id')
-          .addSelect('SUM(s.qty_on_hand) - SUM(s.qty_reserved)', 'available')
-          .addSelect('SUM(s.qty_on_hand)', 'on_hand')
-          .from(ItemStock, 's').groupBy('s.item_id'),
+        (qb) =>
+          qb
+            .select('s.item_id', 'item_id')
+            .addSelect('SUM(s.qty_on_hand) - SUM(s.qty_reserved)', 'available')
+            .addSelect('SUM(s.qty_on_hand)', 'on_hand')
+            .from(ItemStock, 's')
+            .groupBy('s.item_id'),
         'stock_sum',
         'stock_sum.item_id = item.id',
       )
       .where('item.is_active = true')
-      .select('COUNT(*) FILTER (WHERE stock_sum.available <= item.low_stock_threshold)', 'low_stock_count')
-      .addSelect('COALESCE(SUM(stock_sum.on_hand * COALESCE(item.unit_price, 0)), 0)', 'inventory_value')
+      .select(
+        'COUNT(*) FILTER (WHERE stock_sum.available <= item.low_stock_threshold)',
+        'low_stock_count',
+      )
+      .addSelect(
+        'COALESCE(SUM(stock_sum.on_hand * COALESCE(item.unit_price, 0)), 0)',
+        'inventory_value',
+      )
       .getRawOne<{ low_stock_count: string; inventory_value: string }>();
 
     return {
@@ -51,6 +63,10 @@ export class DashboardService {
   }
 
   recentTransactions() {
-    return this.transactions.find({ relations: ['item', 'fromLocation', 'toLocation'], order: { transactionDate: 'DESC' }, take: 10 });
+    return this.transactions.find({
+      relations: ['item', 'fromLocation', 'toLocation'],
+      order: { transactionDate: 'DESC' },
+      take: 10,
+    });
   }
 }

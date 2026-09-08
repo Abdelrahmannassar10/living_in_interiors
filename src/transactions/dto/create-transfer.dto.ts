@@ -1,2 +1,15 @@
-import { IsInt, IsNotEmpty, IsOptional, IsPositive, IsString } from 'class-validator';
-export class CreateTransferDto { @IsString() @IsNotEmpty() itemCode!: string; @IsInt() @IsPositive() fromLocationId!: number; @IsInt() @IsPositive() toLocationId!: number; @IsInt() @IsPositive() qty!: number; @IsOptional() @IsString() referenceNo?: string; @IsOptional() @IsString() notes?: string; }
+import {
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsPositive,
+  IsString,
+} from 'class-validator';
+export class CreateTransferDto {
+  @IsString() @IsNotEmpty() itemCode!: string;
+  @IsInt() @IsPositive() fromLocationId!: number;
+  @IsInt() @IsPositive() toLocationId!: number;
+  @IsInt() @IsPositive() qty!: number;
+  @IsOptional() @IsString() referenceNo?: string;
+  @IsOptional() @IsString() notes?: string;
+}

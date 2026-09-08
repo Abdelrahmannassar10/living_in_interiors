@@ -3,7 +3,13 @@ import { EntityManager } from 'typeorm';
 import { Item } from '../items/entities/item.entity';
 import { ItemStock } from '../items/entities/item-stock.entity';
 import { Location } from '../locations/entities/location.entity';
-import { applyStockMove, snapshotRowsFor, StockMoveInput, StockRowState, StockSnapshot } from './stock-engine';
+import {
+  applyStockMove,
+  snapshotRowsFor,
+  StockMoveInput,
+  StockRowState,
+  StockSnapshot,
+} from './stock-engine';
 
 export interface InventoryChange extends StockMoveInput {
   item: Item;
@@ -18,10 +24,15 @@ export interface InventoryChange extends StockMoveInput {
  */
 @Injectable()
 export class InventoryService {
-  async applyTransaction(manager: EntityManager, params: InventoryChange): Promise<{ before: StockSnapshot; after: StockSnapshot }> {
+  async applyTransaction(
+    manager: EntityManager,
+    params: InventoryChange,
+  ): Promise<{ before: StockSnapshot; after: StockSnapshot }> {
     this.requirePhysical(params.fromLocation);
     this.requirePhysical(params.toLocation);
-    const touched = [params.fromLocation?.id, params.toLocation?.id].filter((id): id is number => typeof id === 'number');
+    const touched = [params.fromLocation?.id, params.toLocation?.id].filter(
+      (id): id is number => typeof id === 'number',
+    );
 
     const entities = await manager
       .createQueryBuilder(ItemStock, 'stock')
@@ -31,13 +42,19 @@ export class InventoryService {
       .orderBy('stock.location_id', 'ASC')
       .getMany();
 
-    const rows: StockRowState[] = entities.map((entity) => ({ locationId: entity.location.id, qtyOnHand: entity.qtyOnHand, qtyReserved: entity.qtyReserved }));
+    const rows: StockRowState[] = entities.map((entity) => ({
+      locationId: entity.location.id,
+      qtyOnHand: entity.qtyOnHand,
+      qtyReserved: entity.qtyReserved,
+    }));
     const before = snapshotRowsFor(rows, touched);
 
     const result = applyStockMove(rows, params.item.qtySold, params);
     params.item.qtySold = result.qtySold;
 
-    const byLocationId = new Map(entities.map((entity) => [entity.location.id, entity]));
+    const byLocationId = new Map(
+      entities.map((entity) => [entity.location.id, entity]),
+    );
     const created: ItemStock[] = [];
     const updated: ItemStock[] = [];
     for (const row of result.rows) {
@@ -47,7 +64,14 @@ export class InventoryService {
         existing.qtyReserved = row.qtyReserved;
         updated.push(existing);
       } else {
-        created.push(manager.create(ItemStock, { item: { id: params.item.id }, location: { id: row.locationId }, qtyOnHand: row.qtyOnHand, qtyReserved: row.qtyReserved }));
+        created.push(
+          manager.create(ItemStock, {
+            item: { id: params.item.id },
+            location: { id: row.locationId },
+            qtyOnHand: row.qtyOnHand,
+            qtyReserved: row.qtyReserved,
+          }),
+        );
       }
     }
     if (updated.length > 0) await manager.save(updated);
@@ -57,6 +81,7 @@ export class InventoryService {
   }
 
   private requirePhysical(location?: Location | null): void {
-    if (location && !location.isPhysical) throw new Error(`${location.name} is not a physical location`);
+    if (location && !location.isPhysical)
+      throw new Error(`${location.name} is not a physical location`);
   }
 }

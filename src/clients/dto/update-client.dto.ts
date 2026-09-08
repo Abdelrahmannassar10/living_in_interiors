@@ -2,7 +2,11 @@ import { IsEmail, IsOptional, IsString, MaxLength } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class UpdateClientDto {
-  @IsOptional() @IsString() @Transform(({ value }) => String(value).trim()) @MaxLength(200) name?: string;
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) => String(value).trim())
+  @MaxLength(200)
+  name?: string;
   @IsOptional() @IsString() @MaxLength(50) type?: string;
   @IsOptional() @IsString() @MaxLength(200) contactPerson?: string;
   @IsOptional() @IsString() @MaxLength(50) phone?: string;

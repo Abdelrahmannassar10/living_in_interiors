@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
@@ -13,15 +18,28 @@ import { User } from './entities/user.entity';
 export class UsersService {
   private readonly saltRounds: number;
 
-  constructor(@InjectRepository(User) private readonly usersRepository: Repository<User>, config: ConfigService) {
+  constructor(
+    @InjectRepository(User) private readonly usersRepository: Repository<User>,
+    config: ConfigService,
+  ) {
     this.saltRounds = Number(config.get<string>('BCRYPT_SALT_ROUNDS', '12'));
   }
 
   async findAll(pagination: PaginationDto): Promise<PaginatedResult<User>> {
     const [data, total] = await this.usersRepository.findAndCount({
-      order: { username: 'ASC' }, skip: (pagination.page - 1) * pagination.limit, take: pagination.limit,
+      order: { username: 'ASC' },
+      skip: (pagination.page - 1) * pagination.limit,
+      take: pagination.limit,
     });
-    return { data, meta: { page: pagination.page, limit: pagination.limit, total, totalPages: Math.ceil(total / pagination.limit) } };
+    return {
+      data,
+      meta: {
+        page: pagination.page,
+        limit: pagination.limit,
+        total,
+        totalPages: Math.ceil(total / pagination.limit),
+      },
+    };
   }
 
   async findOne(id: number): Promise<User> {
@@ -37,7 +55,10 @@ export class UsersService {
   async create(dto: CreateUserDto): Promise<User> {
     const existing = await this.findByUsername(dto.username);
     if (existing) throw new ConflictException('Username already exists');
-    const user = this.usersRepository.create({ ...dto, password: await bcrypt.hash(dto.password, this.saltRounds) });
+    const user = this.usersRepository.create({
+      ...dto,
+      password: await bcrypt.hash(dto.password, this.saltRounds),
+    });
     return this.usersRepository.save(user);
   }
 
@@ -59,7 +80,8 @@ export class UsersService {
   /** Self-service change: requires the current password. */
   async changePassword(id: number, dto: ChangePasswordDto): Promise<void> {
     const user = await this.findOne(id);
-    if (!(await bcrypt.compare(dto.currentPassword, user.password))) throw new UnauthorizedException('Current password is incorrect');
+    if (!(await bcrypt.compare(dto.currentPassword, user.password)))
+      throw new UnauthorizedException('Current password is incorrect');
     user.password = await bcrypt.hash(dto.newPassword, this.saltRounds);
     user.refreshToken = null;
     await this.usersRepository.save(user);

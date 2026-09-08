@@ -18,12 +18,14 @@ export class LoggingInterceptor implements NestInterceptor {
     const startedAt = Date.now();
 
     return next.handle().pipe(
-      tap(() => this.logger.log({
-        method: request.method,
-        url: request.originalUrl,
-        statusCode: response.statusCode,
-        durationMs: Date.now() - startedAt,
-      })),
+      tap(() =>
+        this.logger.log({
+          method: request.method,
+          url: request.originalUrl,
+          statusCode: response.statusCode,
+          durationMs: Date.now() - startedAt,
+        }),
+      ),
     );
   }
 }

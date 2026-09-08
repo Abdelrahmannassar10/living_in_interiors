@@ -14,7 +14,8 @@ const ALERT_QUIET_HOURS = 6;
 @Injectable()
 export class StockAlertsService {
   constructor(
-    @InjectRepository(StockAlertConfig) private readonly configs: Repository<StockAlertConfig>,
+    @InjectRepository(StockAlertConfig)
+    private readonly configs: Repository<StockAlertConfig>,
     @InjectRepository(Item) private readonly items: Repository<Item>,
     private readonly gateway: AppGateway,
   ) {}
@@ -22,8 +23,17 @@ export class StockAlertsService {
   async getConfig(itemId: number) {
     const item = await this.items.findOneBy({ id: itemId });
     if (!item) throw new NotFoundException('Item not found');
-    let config = await this.configs.findOne({ where: { item: { id: itemId } } });
-    if (!config) config = await this.configs.save(this.configs.create({ item, threshold: item.lowStockThreshold, isEnabled: true }));
+    let config = await this.configs.findOne({
+      where: { item: { id: itemId } },
+    });
+    if (!config)
+      config = await this.configs.save(
+        this.configs.create({
+          item,
+          threshold: item.lowStockThreshold,
+          isEnabled: true,
+        }),
+      );
     return config;
   }
 
@@ -39,8 +49,12 @@ export class StockAlertsService {
       .createQueryBuilder('item')
       .leftJoinAndSelect('item.brand', 'brand')
       .innerJoin(
-        (qb) => qb.select('s.item_id', 'item_id').addSelect('SUM(s.qty_on_hand) - SUM(s.qty_reserved)', 'available')
-          .from(ItemStock, 's').groupBy('s.item_id'),
+        (qb) =>
+          qb
+            .select('s.item_id', 'item_id')
+            .addSelect('SUM(s.qty_on_hand) - SUM(s.qty_reserved)', 'available')
+            .from(ItemStock, 's')
+            .groupBy('s.item_id'),
         'stock_sum',
         'stock_sum.item_id = item.id',
       )
@@ -56,15 +70,26 @@ export class StockAlertsService {
    */
   async evaluateAfterTransaction(transaction: Transaction): Promise<void> {
     try {
-      const item = await this.items.findOne({ where: { id: transaction.item.id }, relations: ['brand'] });
+      const item = await this.items.findOne({
+        where: { id: transaction.item.id },
+        relations: ['brand'],
+      });
       if (!item) return;
       const config = await this.getConfig(item.id);
       if (!config.isEnabled) return;
       const result = await this.items
         .createQueryBuilder('item')
         .innerJoin(
-          (qb) => qb.select('s.item_id', 'item_id').addSelect('SUM(s.qty_on_hand) - SUM(s.qty_reserved)', 'available')
-            .from(ItemStock, 's').where('s.item_id = :itemId').groupBy('s.item_id'),
+          (qb) =>
+            qb
+              .select('s.item_id', 'item_id')
+              .addSelect(
+                'SUM(s.qty_on_hand) - SUM(s.qty_reserved)',
+                'available',
+              )
+              .from(ItemStock, 's')
+              .where('s.item_id = :itemId')
+              .groupBy('s.item_id'),
           'stock_sum',
           'stock_sum.item_id = item.id',
         )
@@ -78,7 +103,12 @@ export class StockAlertsService {
       if (Date.now() - lastAlerted < quietMs) return;
       config.lastAlertedAt = new Date();
       await this.configs.save(config);
-      this.gateway.emitStockAlert(item.code, item.description, available, config.threshold);
+      this.gateway.emitStockAlert(
+        item.code,
+        item.description,
+        available,
+        config.threshold,
+      );
     } catch {
       // Alerting must never fail the transaction flow.
     }

@@ -7,7 +7,11 @@ import { QuotationDetail } from './entities/quotation-detail.entity';
 import { QuotationDetailsController } from './quotation-details.controller';
 import { QuotationDetailsService } from './quotation-details.service';
 @Module({
-  imports: [TypeOrmModule.forFeature([QuotationDetail, Quotation]), ItemsModule, QuotationsModule],
+  imports: [
+    TypeOrmModule.forFeature([QuotationDetail, Quotation]),
+    ItemsModule,
+    QuotationsModule,
+  ],
   controllers: [QuotationDetailsController],
   providers: [QuotationDetailsService],
   exports: [QuotationDetailsService],

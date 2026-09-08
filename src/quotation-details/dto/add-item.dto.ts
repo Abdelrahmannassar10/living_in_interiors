@@ -1,4 +1,13 @@
-import { IsInt, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, Max, Min } from 'class-validator';
+import {
+  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsPositive,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator';
 export class AddItemDto {
   @IsInt() @IsPositive() quotationId!: number;
   @IsString() @IsNotEmpty() itemCode!: string;

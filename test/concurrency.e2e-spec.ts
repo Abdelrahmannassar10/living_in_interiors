@@ -26,17 +26,29 @@ describe('Concurrency (e2e)', () => {
 
   beforeAll(async () => {
     process.env.NODE_ENV = 'test';
-    process.env.JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET ?? 'e2e_access_secret_that_is_longer_than_32_chars';
-    process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET ?? 'e2e_refresh_secret_that_is_longer_than_32_chars';
+    process.env.JWT_ACCESS_SECRET =
+      process.env.JWT_ACCESS_SECRET ??
+      'e2e_access_secret_that_is_longer_than_32_chars';
+    process.env.JWT_REFRESH_SECRET =
+      process.env.JWT_REFRESH_SECRET ??
+      'e2e_refresh_secret_that_is_longer_than_32_chars';
     process.env.DB_LOGGING = 'false';
 
-    const moduleFixture: TestingModule = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
     app = moduleFixture.createNestApplication();
     dataSource = app.get(DataSource);
 
     const locationRepo = dataSource.getRepository(Location);
     if (!(await locationRepo.findOneBy({ name: 'Showroom' }))) {
-      await locationRepo.save(locationRepo.create({ name: 'Showroom', type: LocationType.Showroom, isPhysical: true }));
+      await locationRepo.save(
+        locationRepo.create({
+          name: 'Showroom',
+          type: LocationType.Showroom,
+          isPhysical: true,
+        }),
+      );
     }
 
     // Reuse a real bcrypt hash so the login path works.
@@ -44,7 +56,15 @@ describe('Concurrency (e2e)', () => {
     const userRepo = dataSource.getRepository(User);
     const admin = await userRepo.findOneBy({ username: 'race_admin' });
     if (!admin) {
-      await userRepo.save(userRepo.create({ username: 'race_admin', password: realHash, fullName: 'Race Admin', role: Role.Admin, isActive: true }));
+      await userRepo.save(
+        userRepo.create({
+          username: 'race_admin',
+          password: realHash,
+          fullName: 'Race Admin',
+          role: Role.Admin,
+          isActive: true,
+        }),
+      );
     }
 
     // Reset the race item.
@@ -52,7 +72,10 @@ describe('Concurrency (e2e)', () => {
 
     await app.init();
 
-    const login = await request(app.getHttpServer()).post(`${api}/auth/login`).send({ username: 'race_admin', password: PASSWORD }).expect(201);
+    const login = await request(app.getHttpServer())
+      .post(`${api}/auth/login`)
+      .send({ username: 'race_admin', password: PASSWORD })
+      .expect(201);
     adminToken = login.body.data.accessToken;
   }, 60000);
 
@@ -61,7 +84,13 @@ describe('Concurrency (e2e)', () => {
     await request(app.getHttpServer())
       .post(`${api}/items`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ code: TEST_CODE, description: 'Race chair', unitPrice: '100.00', initialQty: 1, initialLocationId: 1 })
+      .send({
+        code: TEST_CODE,
+        description: 'Race chair',
+        unitPrice: '100.00',
+        initialQty: 1,
+        initialLocationId: 1,
+      })
       .expect(201);
 
     const results = await Promise.allSettled(
@@ -69,13 +98,22 @@ describe('Concurrency (e2e)', () => {
         request(app.getHttpServer())
           .post(`${api}/transactions/sale`)
           .set('Authorization', `Bearer ${adminToken}`)
-          .send({ itemCode: TEST_CODE, fromLocationId: 1, qty: 1, customerName: 'Race Buyer' }),
+          .send({
+            itemCode: TEST_CODE,
+            fromLocationId: 1,
+            qty: 1,
+            customerName: 'Race Buyer',
+          }),
       ),
     );
 
     // Exactly one may succeed.
-    const fulfilled = results.filter((r) => r.status === 'fulfilled' && r.value.status === 201);
-    const rejected = results.filter((r) => r.status === 'fulfilled' && r.value.status === 400);
+    const fulfilled = results.filter(
+      (r) => r.status === 'fulfilled' && r.value.status === 201,
+    );
+    const rejected = results.filter(
+      (r) => r.status === 'fulfilled' && r.value.status === 400,
+    );
     expect(fulfilled).toHaveLength(1);
     expect(rejected.length).toBeGreaterThanOrEqual(1);
 
@@ -95,7 +133,11 @@ describe('Concurrency (e2e)', () => {
         request(app.getHttpServer())
           .post(`${api}/quotations`)
           .set('Authorization', `Bearer ${adminToken}`)
-          .send({ clientName: `Race Client ${i}`, email: `race${i}@example.com`, currency: 'USD' }),
+          .send({
+            clientName: `Race Client ${i}`,
+            email: `race${i}@example.com`,
+            currency: 'USD',
+          }),
       ),
     );
 
@@ -110,6 +152,54 @@ describe('Concurrency (e2e)', () => {
 
     expect(numbers.length).toBe(5);
     expect(new Set(numbers).size).toBe(5); // all unique
+  }, 30000);
+
+  it('only one active order per Approved quotation (double convert fails)', async () => {
+    // An order created from the quotation is Confirmed → the quotation becomes
+    // Converted. A second order from the same quotation must be rejected.
+    const created = await request(app.getHttpServer())
+      .post(`${api}/quotations`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        clientName: 'Double Convert',
+        email: 'double@example.com',
+        currency: 'USD',
+      })
+      .expect(201);
+    const quotationId = created.body.data.id;
+
+    await request(app.getHttpServer())
+      .post(`${api}/quotation-details`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ quotationId, itemCode: TEST_CODE, qty: 1, unitPrice: 100 })
+      .expect(201);
+    await request(app.getHttpServer())
+      .patch(`${api}/quotations/${quotationId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'Sent' })
+      .expect(200);
+    await request(app.getHttpServer())
+      .patch(`${api}/quotations/${quotationId}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'Approved' })
+      .expect(200);
+
+    // First conversion builds a Draft order and confirms it.
+    const first = await request(app.getHttpServer())
+      .post(`${api}/sales-orders/from-quotation/${quotationId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(201);
+    const firstId = first.body.data.id;
+    await request(app.getHttpServer())
+      .post(`${api}/sales-orders/${firstId}/confirm`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(201);
+
+    // Second conversion must fail: the quotation is now Converted.
+    await request(app.getHttpServer())
+      .post(`${api}/sales-orders/from-quotation/${quotationId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(400);
   }, 30000);
 
   afterAll(async () => {

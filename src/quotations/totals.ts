@@ -28,10 +28,19 @@ export interface QuotationTotals {
 }
 
 /** subtotal − global% − vat% on the discounted base, computed in cents. */
-export function computeQuotationTotals(input: QuotationTotalsInput): QuotationTotals {
-  const subtotalCents = input.lines.reduce((sum, line) => sum + toCents(line.totalPriceAfterDiscount), 0);
-  const discountCents = Math.round((subtotalCents * toCents(input.discountGlobalPercent)) / (100 * 100));
-  const vatCents = Math.round(((subtotalCents - discountCents) * toCents(input.vatPercent)) / (100 * 100));
+export function computeQuotationTotals(
+  input: QuotationTotalsInput,
+): QuotationTotals {
+  const subtotalCents = input.lines.reduce(
+    (sum, line) => sum + toCents(line.totalPriceAfterDiscount),
+    0,
+  );
+  const discountCents = Math.round(
+    (subtotalCents * toCents(input.discountGlobalPercent)) / (100 * 100),
+  );
+  const vatCents = Math.round(
+    ((subtotalCents - discountCents) * toCents(input.vatPercent)) / (100 * 100),
+  );
   return {
     subtotal: fromCents(subtotalCents),
     globalDiscountAmount: fromCents(discountCents),

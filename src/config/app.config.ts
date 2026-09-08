@@ -9,7 +9,9 @@ export const appConfig = registerAs('app', () => ({
 }));
 
 export const appValidationSchema = Joi.object({
-  NODE_ENV: Joi.string().valid('development', 'test', 'production').default('development'),
+  NODE_ENV: Joi.string()
+    .valid('development', 'test', 'production')
+    .default('development'),
   PORT: Joi.number().port().default(3000),
   API_PREFIX: Joi.string().default('api/v1'),
   APP_NAME: Joi.string().default('Living In interiors'),

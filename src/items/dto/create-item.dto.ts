@@ -1,8 +1,18 @@
 import { Transform } from 'class-transformer';
-import { IsInt, IsNotEmpty, IsNumberString, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsInt,
+  IsNotEmpty,
+  IsNumberString,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 
 export class CreateItemDto {
-  @IsString() @IsNotEmpty() @Transform(({ value }: { value: string }) => value.trim().toUpperCase()) code!: string;
+  @IsString()
+  @IsNotEmpty()
+  @Transform(({ value }: { value: string }) => value.trim().toUpperCase())
+  code!: string;
   @IsOptional() @IsInt() brandId?: number;
   @IsOptional() @IsString() description?: string;
   @IsOptional() @IsString() dimension?: string;

@@ -1,4 +1,10 @@
-import { IsInt, IsNumberString, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsInt,
+  IsNumberString,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 
 export class UpdateItemDto {
   @IsOptional() @IsInt() brandId?: number;

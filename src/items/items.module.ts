@@ -10,7 +10,12 @@ import { ItemsController } from './items.controller';
 import { ItemsService } from './items.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Item, ItemPhoto, ItemStock]), UploadsModule, GatewayModule, StockAlertsModule],
+  imports: [
+    TypeOrmModule.forFeature([Item, ItemPhoto, ItemStock]),
+    UploadsModule,
+    GatewayModule,
+    StockAlertsModule,
+  ],
   controllers: [ItemsController],
   providers: [ItemsService],
   exports: [ItemsService],

@@ -20,7 +20,13 @@ describe('computeQuotationTotals', () => {
   };
 
   it('sums line totals with no discount or VAT', () => {
-    const result = computeQuotationTotals({ ...base, lines: [{ totalPriceAfterDiscount: '100.00' }, { totalPriceAfterDiscount: '250.50' }] });
+    const result = computeQuotationTotals({
+      ...base,
+      lines: [
+        { totalPriceAfterDiscount: '100.00' },
+        { totalPriceAfterDiscount: '250.50' },
+      ],
+    });
     expect(result.subtotal).toBe(350.5);
     expect(result.grandTotal).toBe(350.5);
     expect(result.activeLineCount).toBe(2);
@@ -39,7 +45,11 @@ describe('computeQuotationTotals', () => {
   });
 
   it('rounds half-cent values deterministically', () => {
-    const result = computeQuotationTotals({ ...base, lines: [{ totalPriceAfterDiscount: '10.005' }], vatPercent: 14 });
+    const result = computeQuotationTotals({
+      ...base,
+      lines: [{ totalPriceAfterDiscount: '10.005' }],
+      vatPercent: 14,
+    });
     // 10.005 -> 1000.5 cents rounds to 1001 (subtotal 10.01); vat 14% of 1001 = 140.14 -> 1.40
     expect(result.subtotal).toBe(10.01);
   });
