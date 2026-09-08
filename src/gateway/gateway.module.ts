@@ -1,4 +1,13 @@
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
 import { AppGateway } from './app.gateway';
-@Module({ providers: [AppGateway], exports: [AppGateway] })
+@Module({
+  imports: [JwtModule.registerAsync({
+    inject: [ConfigService],
+    useFactory: (config: ConfigService) => ({ secret: config.getOrThrow<string>('JWT_ACCESS_SECRET') }),
+  })],
+  providers: [AppGateway],
+  exports: [AppGateway, JwtModule],
+})
 export class GatewayModule {}
