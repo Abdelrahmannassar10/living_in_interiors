@@ -61,12 +61,15 @@ export class StockModelRefactor1725700000000 implements MigrationInterface {
       `CREATE TABLE "number_sequences" ("scope" character varying(100) NOT NULL, "next_value" integer NOT NULL, CONSTRAINT "PK_number_sequences" PRIMARY KEY ("scope"))`,
     );
 
-    // Adjustment reason becomes an enum; migrate the legacy 'New Arrival' string.
+    // Adjustment reason becomes an enum; normalize the legacy labels first.
     await queryRunner.query(
       `CREATE TYPE "public"."transactions_adjustment_reason_enum" AS ENUM('NewArrival', 'Damage', 'CountCorrection', 'CustomerReturn', 'SupplierReturn')`,
     );
     await queryRunner.query(
       `UPDATE "transactions" SET "adjustment_reason" = 'NewArrival' WHERE "adjustment_reason" = 'New Arrival'`,
+    );
+    await queryRunner.query(
+      `UPDATE "transactions" SET "adjustment_reason" = 'NewArrival' WHERE "adjustment_reason" = 'New arrival from supplier'`,
     );
     await queryRunner.query(
       `UPDATE "transactions" SET "adjustment_reason" = 'CustomerReturn' WHERE "adjustment_reason" = 'Customer Return'`,
