@@ -2,6 +2,8 @@
 
 > **Frozen API** — the backend is feature-complete and committed (`46b9122`). Treat this document as the contract. Any API change requires a new commit from the backend side before the frontend adapts.
 
+> **Updated** — added **RFQ (Request for Quotation)** and **Release Permit** modules (see §6.13, §6.14, §8, §9). Deliveries now require a **Released** release permit.
+
 ---
 
 ## 0. Quick-start for a desktop developer
@@ -147,7 +149,7 @@ Nullifies the stored refresh token. Call on app close or explicit sign-out.
 | **Staff** | everything | items, clients, suppliers, brands*, quotations, orders, sales, transfers, returns, deliveries, POs* | — | — | — |
 | **Viewer** | everything | — | — | — | — |
 
-*Staff cannot: create brands, delete items/clients/suppliers, adjust stock, set stock alerts, create users, update quotation status, confirm/cancel orders, send/close POs, create invoices/payments, view audit logs.*
+*Staff cannot: create brands, delete items/clients/suppliers, adjust stock, set stock alerts, create users, update quotation status, confirm/cancel orders, send/close POs, create invoices/payments, view audit logs, approve/release release permits, create release permits.*
 
 Staff-created POs are restricted. Staff can create and edit items, clients, and suppliers, but not delete them.
 
@@ -200,6 +202,16 @@ POST   /transactions/transfer                  201    201      201    403
 POST   /transactions/sale                      201    201      201    403
 POST   /transactions/return                    201    201      201    403
 POST   /transactions/adjustment                201    201      403    403
+POST   /rfqs                                   201    201      201    403
+PATCH  /rfqs/:id                               200    200      200    403
+PATCH  /rfqs/:id/status                        200    200      403    403
+POST   /rfqs/lines                             201    201      201    403
+PATCH  /rfqs/lines/:lineId                     200    200      200    403
+DELETE /rfqs/lines/:lineId                     200    200      200    403
+POST   /release-permits                        201    201      403    403
+PATCH  /release-permits/:id/status             200    200      403    403
+POST   /release-permits/:id/lines              201    201      403    403
+DELETE /release-permits/:id/lines/:lineId      200    200      403    403
 POST   /invoices                               201    201      403    403
 POST   /invoices/manual                        201    201      403    403
 POST   /payments                               201    201      403    403
@@ -224,6 +236,12 @@ Viewer gets 403 on every POST/PATCH/PUT/DELETE. Admin bypasses all role checks.
 
 // Purchase order status
 "Draft" | "Sent" | "PartiallyReceived" | "Received" | "Closed" | "Cancelled"
+
+// RFQ status
+"Draft" | "Sent" | "Received" | "Awarded" | "Cancelled"
+
+// Release permit status
+"Draft" | "Approved" | "Released" | "Cancelled"
 
 // Invoice status
 "Open" | "PartiallyPaid" | "Paid" | "Cancelled"
@@ -371,7 +389,7 @@ The item snapshot (`codeSnapshot`, `descriptionSnapshot`, `brandSnapshot`, `phot
 | `DELETE` | `/sales-orders/lines/:lineId` | Staff+ | — |
 | `POST` | `/sales-orders/:id/confirm` | Manager+ | — (reserves stock, `Draft` → `Confirmed`) |
 | `POST` | `/sales-orders/:id/cancel` | Manager+ | — (releases reservations, requires `Draft` or `Confirmed`) |
-| `POST` | `/sales-orders/:id/deliveries` | Staff+ | `{ lines: [{ salesOrderLineId, qty }], deliveredAt?, notes? }` (creates delivery, auto-`Closed` when fully delivered) |
+| `POST` | `/sales-orders/:id/deliveries` | Staff+ | `{ lines: [{ salesOrderLineId, qty }], deliveredAt?, notes? }` (creates delivery, auto-`Closed` when fully delivered; **requires a Released release permit** per line) |
 
 **Status machine:**
 ```
@@ -380,7 +398,7 @@ Draft → Confirmed → Delivered → Closed
     Cancelled       Cancelled
 ```
 - `confirm`: reserves stock (showroom-first). Sets `shortage = true` on lines that couldn't be fully reserved.
-- `deliver`: stock leaves showroom, `qtyDelivered` accumulates on lines. Auto-`Close` when all lines fully delivered.
+- `deliver`: stock leaves showroom, `qtyDelivered` accumulates on lines. **Requires a Released release permit.** Auto-`Close` when all lines fully delivered.
 - `cancel`: releases reservations. Allowed only from `Draft` or `Confirmed`.
 - **Line edits blocked once invoiced** (structural — invoice requires Delivered/Closed, line edits require Draft).
 
@@ -420,7 +438,43 @@ Draft → Sent → PartiallyReceived → Received → Closed
 | `POST` | `/transactions/return` | Staff+ | `{ itemCode, toLocationId, qty, customerName, referenceNo?, notes? }` |
 | `POST` | `/transactions/adjustment` | Manager+ | `{ itemCode, adjustmentType: "Increase"|"Decrease", adjustmentReason: "NewArrival"|"Damage"|"CountCorrection"|"CustomerReturn"|"SupplierReturn", locationId, qty, notes? }` |
 
-### 6.13 Deliveries
+### 6.13 RFQ (Request for Quotation)
+
+Solicits price quotes from suppliers for specific items. Links to an existing supplier and client. Line items hold the requested quantity plus a free-form description.
+
+| Method | Path | Auth | Body |
+|---|---|---|---|
+| `GET` | `/rfqs?page=1&limit=20` | Bearer | — |
+| `GET` | `/rfqs/:id` | Bearer | — (includes `supplier`, `client`, `lines`) |
+| `POST` | `/rfqs` | Staff+ | `{ supplierId?, clientId?, clientName?, contactPerson?, phone?, email?, validUntil?, notes?, internalNotes?, currency? }` |
+| `PATCH` | `/rfqs/:id` | Staff+ | same as create, all optional (Draft only) |
+| `PATCH` | `/rfqs/:id/status` | Manager+ | `{ status: "Sent"\|"Received"\|"Awarded"\|"Cancelled" }` |
+| `POST` | `/rfqs/lines` | Staff+ | `{ rfqId, itemCode, qty, description? }` |
+| `PATCH` | `/rfqs/lines/:lineId` | Staff+ | `{ qty?, description?, unitPrice?, leadTimeDays? }` (Draft only) |
+| `DELETE` | `/rfqs/lines/:lineId` | Staff+ | — (soft-delete, Draft only) |
+
+**Workflow:** `Draft` → `Sent` → `Received` → `Awarded`. Cancellable from `Draft`, `Sent`, or `Received`. Supplier quote (`unitPrice`, `leadTimeDays`) is captured on lines once received.
+
+**RFQ number:** auto-generated `RFQ#0001-<YY>` (4-digit sequential per year). Importable to a PO later as a purchasing reference.
+
+### 6.14 Release Permits
+
+Authorizes dispatch of goods from the sales order for delivery. A delivery **cannot be created** unless the order has a **Released** permit covering every line's delivered quantity.
+
+| Method | Path | Auth | Body |
+|---|---|---|---|
+| `GET` | `/release-permits?page=1&limit=20` | Bearer | — |
+| `GET` | `/release-permits/:id` | Bearer | — (includes `salesOrder`, `lines`, approver/releaser) |
+| `POST` | `/release-permits` | Manager+ | `{ salesOrderId, lines: [{ salesOrderLineId, qty }], notes?, internalNotes? }` |
+| `PATCH` | `/release-permits/:id/status` | Manager+ | `{ status: "Approved"\|"Released"\|"Cancelled" }` |
+| `POST` | `/release-permits/:id/lines` | Manager+ | `{ salesOrderLineId, qty }` (Draft only) |
+| `DELETE` | `/release-permits/:id/lines/:lineId` | Manager+ | — (Draft only) |
+
+**Workflow:** `Draft` → `Approved` → `Released`. Cancellable from `Draft` or `Approved`. Approving records `approvedBy`/`approvedAt`; releasing records `releasedBy`/`releasedAt`. `status: "Released"` must be present before `POST /sales-orders/:id/deliveries` succeeds (per order line, summed across all non-cancelled permits).
+
+**Permit number:** auto-generated `RP-<YY>-####`.
+
+### 6.15 Deliveries
 
 | Method | Path | Auth |
 |---|---|---|
@@ -429,7 +483,9 @@ Draft → Sent → PartiallyReceived → Received → Closed
 
 (Deliveries are created via `POST /sales-orders/:id/deliveries`.)
 
-### 6.14 Invoices
+**Release permit requirement:** before a delivery is accepted, every order line's delivered quantity must be covered by a **Released** release permit (see §6.14). Otherwise the request returns `400`.
+
+### 6.16 Invoices
 
 | Method | Path | Auth | Body |
 |---|---|---|---|
@@ -444,7 +500,7 @@ Draft → Sent → PartiallyReceived → Received → Closed
 
 **Invoice number:** auto-generated `INV-<YY>-####` (sequential per year).
 
-### 6.15 Payments
+### 6.17 Payments
 
 | Method | Path | Auth | Body |
 |---|---|---|---|
@@ -455,21 +511,22 @@ Draft → Sent → PartiallyReceived → Received → Closed
 
 **Payment number:** auto-generated `PAY-<YY>-####`.
 
-### 6.16 Dashboard
+### 6.18 Dashboard
 
 | Method | Path | Auth | Response shape |
 |---|---|---|---|
 | `GET` | `/dashboard/summary` | Bearer | `{ totalItems, totalActiveItems, totalQuotations, totalClients, lowStockCount, totalInventoryValue }` |
 | `GET` | `/dashboard/recent-transactions` | Bearer | last 10 transactions with `item`, `fromLocation`, `toLocation` |
 
-### 6.17 Reports
+### 6.19 Reports
 
 | Method | Path | Auth | Response |
 |---|---|---|---|
 | `GET` | `/reports/quotation/:id/pdf` | Bearer | PDF binary (`Content-Type: application/pdf`) |
+| `GET` | `/reports/rfq/:id/pdf` | Bearer | PDF binary (`Content-Type: application/pdf`) — RFQ summary |
 | `GET` | `/reports/stock-valuation` | Bearer | `{ lines: [{ itemCode, description, locations: [{ location, qtyOnHand, unitCost, value }], totalValue }], grandTotal }` |
 
-### 6.18 Stock Alerts
+### 6.20 Stock Alerts
 
 | Method | Path | Auth | Body |
 |---|---|---|---|
@@ -477,7 +534,7 @@ Draft → Sent → PartiallyReceived → Received → Closed
 | `GET` | `/stock-alerts/:itemId` | Bearer | — |
 | `PUT` | `/stock-alerts/:itemId` | Manager+ | `{ threshold: number, isEnabled: boolean }` |
 
-### 6.19 Notifications
+### 6.21 Notifications
 
 | Method | Path | Auth | Body |
 |---|---|---|---|
@@ -486,7 +543,7 @@ Draft → Sent → PartiallyReceived → Received → Closed
 | `POST` | `/notifications/quotations/:id/send-email` | Bearer | `{ email }` |
 | `POST` | `/notifications/quotations/:id/test-email` | Bearer | `{ email }` |
 
-### 6.20 Audit Logs
+### 6.22 Audit Logs
 
 | Method | Path | Auth |
 |---|---|---|
@@ -790,6 +847,71 @@ qty: number
 unitCost: string (decimal)
 ```
 
+### Rfq (Request for Quotation)
+
+```
+id: number
+rfqNo: string (unique, e.g. "RFQ#0001-26")
+rfqDate: string (date)
+supplier: { id, name, ... } | null
+client: { id, name, ... } | null
+clientName: string | null
+contactPerson: string | null
+phone: string | null
+email: string | null
+status: "Draft" | "Sent" | "Received" | "Awarded" | "Cancelled"
+validUntil: string | null (date)
+notes: string | null
+internalNotes: string | null
+currency: string (default "USD")
+lines: RfqLine[]   ← loaded on GET :id
+createdBy: { id, ... } | null
+```
+
+### RfqLine
+
+```
+id: number
+sortOrder: number
+item: { id, code, ... } | null
+codeSnapshot: string | null
+descriptionSnapshot: string | null
+qty: number
+description: string | null   (free-form request details)
+unitPrice: string | null (decimal, supplier quote)
+leadTimeDays: number | null   (supplier lead time)
+isDeleted: boolean (soft-delete)
+```
+
+### ReleasePermit
+
+```
+id: number
+permitNo: string (unique, e.g. "RP-26-0001")
+permitDate: string (date)
+salesOrder: { id, orderNo, ... }
+status: "Draft" | "Approved" | "Released" | "Cancelled"
+notes: string | null
+internalNotes: string | null
+approvedBy: { id, ... } | null
+approvedAt: Date | null
+releasedBy: { id, ... } | null
+releasedAt: Date | null
+lines: ReleasePermitLine[]   ← loaded on GET :id
+createdBy: { id, ... } | null
+```
+
+### ReleasePermitLine
+
+```
+id: number
+salesOrderLine: { id, ... }
+item: { id, code, ... } | null
+codeSnapshot: string | null
+descriptionSnapshot: string | null
+qty: number
+```
+
 ### Invoice
 
 ```
@@ -901,7 +1023,7 @@ userAgent: string | null
 
 ## 9. Common workflows (UI guidance)
 
-### Create a quotation → convert to order → deliver → invoice → payment
+### Create a quotation → convert to order → release → deliver → invoice → payment
 
 ```
 1. POST /quotations                           → creates Draft quotation
@@ -910,9 +1032,23 @@ userAgent: string | null
 4. PATCH /quotations/:id/status { status: "Approved" }
 5. POST /sales-orders/from-quotation/:id      → creates Draft order (lines copied from quotation)
 6. POST /sales-orders/:id/confirm             → reserves stock, Confirmed
-7. POST /sales-orders/:id/deliveries          → creates delivery, stock decreases, auto-Close if complete
-8. POST /invoices { salesOrderId }            → creates invoice from Delivered/Closed order
-9. POST /payments { clientId, amount }        → FIFO-allocates to oldest open invoice
+7. POST /release-permits { salesOrderId, lines: [{ salesOrderLineId, qty }] } → Draft permit
+8. PATCH /release-permits/:id/status { status: "Approved" }
+9. PATCH /release-permits/:id/status { status: "Released" }
+10. POST /sales-orders/:id/deliveries         → creates delivery (stock decreases, auto-Close if complete)
+11. POST /invoices { salesOrderId }           → creates invoice from Delivered/Closed order
+12. POST /payments { clientId, amount }       → FIFO-allocates to oldest open invoice
+```
+
+### Request a supplier quote (RFQ)
+
+```
+1. POST /rfqs                                 → creates Draft RFQ (supplier, client)
+2. POST /rfqs/lines  (repeat N times)         → adds requested item + qty + description
+3. PATCH /rfqs/:id/status { status: "Sent" }  → supplier invited to quote
+4. PATCH /rfqs/lines/:lineId  (as needed)     → record supplier unitPrice / leadTimeDays
+5. PATCH /rfqs/:id/status { status: "Received" }
+6. PATCH /rfqs/:id/status { status: "Awarded" } → winning quote selected, workflow closed
 ```
 
 ### Receive goods from supplier
@@ -974,7 +1110,7 @@ If the Electron app loads from `file://`, set `CORS_ALLOW_ALL=true` during devel
 
 ### Puppeteer / PDFs
 
-The quotation PDF endpoint (`GET /reports/quotation/:id/pdf`) renders server-side with Puppeteer. The desktop app just downloads the PDF binary — no local Chrome needed.
+The quotation and RFQ PDF endpoints (`GET /reports/quotation/:id/pdf`, `GET /reports/rfq/:id/pdf`) render server-side with Puppeteer. The desktop app just downloads the PDF binary — no local Chrome needed.
 
 ---
 

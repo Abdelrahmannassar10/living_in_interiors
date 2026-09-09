@@ -32,6 +32,8 @@ import { ReservationsModule } from './reservations/reservations.module';
 import { TasksModule } from './tasks/tasks.module';
 import { PurchaseOrdersModule } from './purchase-orders/purchase-orders.module';
 import { FinanceModule } from './finance/finance.module';
+import { RfqsModule } from './rfqs/rfqs.module';
+import { ReleasePermitsModule } from './release-permits/release-permits.module';
 
 @Module({
   imports: [
@@ -68,6 +70,8 @@ import { FinanceModule } from './finance/finance.module';
     TasksModule,
     PurchaseOrdersModule,
     FinanceModule,
+    RfqsModule,
+    ReleasePermitsModule,
   ],
   controllers: [AppController],
   providers: [

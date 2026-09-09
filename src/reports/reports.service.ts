@@ -6,6 +6,7 @@ import * as path from 'node:path';
 import Handlebars from 'handlebars';
 import puppeteer from 'puppeteer';
 import { QuotationsService } from '../quotations/quotations.service';
+import { RfqsService } from '../rfqs/rfqs.service';
 import { Delivery } from '../deliveries/entities/delivery.entity';
 import { SalesOrder } from '../sales-orders/entities/sales-order.entity';
 import { ItemStock } from '../items/entities/item-stock.entity';
@@ -17,6 +18,7 @@ export class ReportsService {
   private readonly logger = new Logger(ReportsService.name);
   constructor(
     private readonly quotations: QuotationsService,
+    private readonly rfqs: RfqsService,
     @InjectRepository(ItemStock)
     private readonly itemStocks: Repository<ItemStock>,
     @InjectRepository(SupplierPriceList)
@@ -50,6 +52,16 @@ export class ReportsService {
       clientName: order.clientName ?? order.client?.name ?? null,
       lines: delivery.lines ?? [],
     });
+    return this.renderToPdf(html);
+  }
+
+  async generateRfqPdf(id: number): Promise<Buffer> {
+    const rfq = await this.rfqs.findOne(id);
+    const template = await fs.readFile(
+      path.join(__dirname, 'templates', 'rfq.hbs'),
+      'utf8',
+    );
+    const html = Handlebars.compile(template)(rfq);
     return this.renderToPdf(html);
   }
 

@@ -18,6 +18,19 @@ export class ReportsController {
       .send(pdf);
   }
 
+  @Get('rfq/:id/pdf') async rfq(
+    @Param('id', ParseIntPipe) id: number,
+    @Res() response: Response,
+  ) {
+    const pdf = await this.reports.generateRfqPdf(id);
+    response
+      .set({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="rfq-${id}.pdf"`,
+      })
+      .send(pdf);
+  }
+
   @Get('stock-valuation')
   stockValuation() {
     return this.reports.stockValuation();

@@ -15,6 +15,7 @@ import { SalesOrderLine } from '../sales-orders/entities/sales-order-line.entity
 import { SalesOrder } from '../sales-orders/entities/sales-order.entity';
 import { Reservation } from '../reservations/entities/reservation.entity';
 import { ReportsService } from '../reports/reports.service';
+import { ReleasePermitStatus } from '../common/enums/release-permit-status.enum';
 import {
   deliverFromReservations,
   ReserveAllocation,
@@ -91,6 +92,11 @@ export class DeliveriesService {
             );
           }
         }
+
+        // Release-permit gate: every item being delivered must be covered by a
+        // Released permit for this order. The sum of all non-cancelled permit
+        // release quantities must cover the quantities being delivered now.
+        await this.assertReleasePermits(manager, order.id, requested, lineById);
 
         // For each item, lock its stock rows (ordered by location id — deadlock rule),
         // derive reservation allocations, and consume the requested quantity.
@@ -242,6 +248,37 @@ export class DeliveriesService {
         (deliveredByItem.get(reservation.item.id) ?? 0) >= reservation.qty,
     );
     if (toRemove.length > 0) await manager.remove(toRemove);
+  }
+
+  /**
+   * Ensures every line being delivered is covered by a Released release permit.
+   * Only permit lines from permits in the Released state count toward the
+   * authorized quantity. Without a Released permit, delivery is blocked.
+   */
+  private async assertReleasePermits(
+    manager: DataSource['manager'],
+    orderId: number,
+    requested: Map<number, number>,
+    lineById: Map<number, SalesOrderLine>,
+  ): Promise<void> {
+    for (const [lineId, qty] of requested) {
+      const rows: Array<{ released_qty: string }> = await manager.query(
+        `SELECT COALESCE(SUM(rpl.qty), 0) AS released_qty
+         FROM release_permit_lines rpl
+         JOIN release_permits rp ON rp.id = rpl.release_permit_id
+         WHERE rp.sales_order_id = $1
+           AND rpl.sales_order_line_id = $2
+           AND rp.status = $3`,
+        [orderId, lineId, ReleasePermitStatus.Released],
+      );
+      const released = Number(rows[0]?.released_qty ?? 0);
+      if (released < qty) {
+        const line = lineById.get(lineId)!;
+        throw new BadRequestException(
+          `Line ${line.codeSnapshot ?? lineId} is not fully covered by a Released release permit: released ${released}, required ${qty}`,
+        );
+      }
+    }
   }
 
   findAll() {
